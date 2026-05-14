@@ -1,6 +1,6 @@
 import { callGeminiProxy } from './geminiProxy';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, orderBy, limit, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { Artifact, Product, StageKey } from '../types';
 import { ARTIFACT_CATALOG, getArtifactDefinition } from './artifactCatalog';
 
@@ -111,14 +111,14 @@ export async function createArtifact(data: {
     updated_at: serverTimestamp()
   };
 
-  await setDoc(ref, payload);
+  await setDoc(ref, cleanFirestoreData(payload));
 
   // Register history
   let historyType = "artifact_created";
   if (data.type === 'epic') historyType = "epic_created";
   if (data.type === 'user_stories') historyType = "user_stories_created";
 
-  await addDoc(collection(db, 'product_history'), {
+  await addDoc(collection(db, 'product_history'), cleanFirestoreData({
     product_id: data.productId,
     type: historyType,
     title: `Artefato criado: ${data.title}`,
@@ -128,7 +128,7 @@ export async function createArtifact(data: {
     created_by: data.userId,
     created_by_email: data.userEmail,
     created_at: serverTimestamp()
-  });
+  }));
 
   return ref.id;
 }
@@ -170,7 +170,7 @@ async function generateArtifactContent({
 
   const content = await callGeminiProxy({
     prompt: prompt,
-    model: "gemini-3-flash-preview"
+    model: "gemini-1.5-flash"
   });
   
   return content || "";
@@ -183,21 +183,21 @@ export async function updateArtifactContent(productId: string, artifactId: strin
   userId: string;
   userEmail: string;
 }) {
-  await setDoc(doc(db, `products/${productId}/artifacts`, artifactId), {
+  await setDoc(doc(db, `products/${productId}/artifacts`, artifactId), cleanFirestoreData({
     title: data.title,
     content: data.content,
     status: data.status,
     updated_by: data.userId,
     updated_by_email: data.userEmail,
     updated_at: serverTimestamp()
-  }, { merge: true });
+  }), { merge: true });
 }
 
 export async function createArtifactVersion(artifact: Artifact, userId: string, userEmail: string) {
   const versionId = doc(collection(db, `products/${artifact.product_id}/artifact_versions`)).id;
   
   // Save current version to history collection
-  await setDoc(doc(db, `products/${artifact.product_id}/artifact_versions`, versionId), {
+  await setDoc(doc(db, `products/${artifact.product_id}/artifact_versions`, versionId), cleanFirestoreData({
     id: versionId,
     artifact_id: artifact.id,
     product_id: artifact.product_id,
@@ -211,17 +211,17 @@ export async function createArtifactVersion(artifact: Artifact, userId: string, 
     created_by: userId,
     created_by_email: userEmail,
     created_at: serverTimestamp()
-  });
+  }));
 
   const nextVersionNum = (artifact.version_number || 0) + 1;
   const nextVersion = `v0.${nextVersionNum}`;
 
   // Update main artifact
-  await setDoc(doc(db, `products/${artifact.product_id}/artifacts`, artifact.id), {
+  await setDoc(doc(db, `products/${artifact.product_id}/artifacts`, artifact.id), cleanFirestoreData({
     version: nextVersion,
     version_number: nextVersionNum,
     updated_at: serverTimestamp()
-  }, { merge: true });
+  }), { merge: true });
 
   return nextVersion;
 }

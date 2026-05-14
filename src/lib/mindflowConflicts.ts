@@ -4,7 +4,7 @@ import {
   limit, writeBatch, Timestamp, deleteDoc,
   getDoc
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
 import { 
   MindflowLearning, 
   MindflowReasoning, 
@@ -123,7 +123,7 @@ async function analyzeConflict(item: MindflowLearning, references: MindflowLearn
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -161,7 +161,7 @@ async function analyzeInternalConsistency(items: MindflowLearning[]): Promise<Pa
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -200,7 +200,7 @@ async function saveConflict(conflict: Partial<MindflowConflict>) {
     return conflict.involved_memory_ids?.every(id => existingIds.includes(id));
   })) return;
 
-  await addDoc(collection(db, 'mindflow_conflicts'), conflict);
+  await addDoc(collection(db, 'mindflow_conflicts'), cleanFirestoreData(conflict));
 }
 
 export async function groupMindflowConflicts() {
@@ -214,7 +214,7 @@ export async function groupMindflowConflicts() {
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -241,7 +241,7 @@ export async function groupMindflowConflicts() {
         metadata: { conflict_ids: g.conflict_ids }
       };
 
-      const groupRef = await addDoc(collection(db, 'mindflow_conflict_groups'), groupPayload);
+      const groupRef = await addDoc(collection(db, 'mindflow_conflict_groups'), cleanFirestoreData(groupPayload));
       const batch = writeBatch(db);
       for (const cid of g.conflict_ids) {
         batch.update(doc(db, 'mindflow_conflicts', cid), { 
@@ -279,7 +279,7 @@ export async function summarizeConflictGroup(groupId: string) {
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"

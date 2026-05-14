@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, getDoc, collection, query, where, onSnapshot, updateDoc, serverTimestamp, setDoc, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { Product, ProductStage, StageKey, StageField } from '../types';
 import { 
   Boxes, ChevronRight, Activity, Layout, 
@@ -111,7 +111,7 @@ export default function ProductWorkspace() {
     const path = `products/${pId}/stages`;
     try {
       for (const s of JOURNEY_STAGES) {
-        await setDoc(doc(db, path, s.key), {
+        await setDoc(doc(db, path, s.key), cleanFirestoreData({
           product_id: pId,
           stage_key: s.key,
           name: s.label,
@@ -120,7 +120,7 @@ export default function ProductWorkspace() {
           quality_score: 0,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
-        });
+        }));
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);

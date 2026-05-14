@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { Agent, AgentInstructionVersion, StageKey } from '../types';
 
 /**
@@ -53,7 +53,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Multidisciplinar',
       status: 'active',
       primary_stage_id: 'global',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -68,7 +68,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'sense',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -82,7 +82,7 @@ export async function seedDefaultAgents(userId: string) {
        primary_discipline: 'Product Management',
        status: 'active',
        primary_stage_id: 'sense',
-       default_model: 'gemini-3-flash-preview',
+       default_model: 'gemini-1.5-flash',
        temperature: 0.3,
        memory_enabled: true,
        mindflow_enabled: true,
@@ -96,7 +96,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'sense',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -111,7 +111,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'shape',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.5,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -125,7 +125,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'shape',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.6,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -139,7 +139,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'shape',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.3,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -153,7 +153,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'shape',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.2,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -168,7 +168,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Design',
       status: 'active',
       primary_stage_id: 'sketch',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.7,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -182,7 +182,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Design',
       status: 'active',
       primary_stage_id: 'sketch',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.2,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -196,7 +196,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Design',
       status: 'active',
       primary_stage_id: 'sketch',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -210,7 +210,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Design',
       status: 'active',
       primary_stage_id: 'sketch',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.6,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -225,7 +225,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Management',
       status: 'active',
       primary_stage_id: 'scope',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -239,7 +239,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Product Marketing',
       status: 'active',
       primary_stage_id: 'scope',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.5,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -253,7 +253,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Data',
       status: 'active',
       primary_stage_id: 'scope',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.3,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -268,7 +268,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Engenharia',
       status: 'active',
       primary_stage_id: 'ship',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.3,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -282,7 +282,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Engenharia',
       status: 'active',
       primary_stage_id: 'ship',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.4,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -296,7 +296,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Engenharia',
       status: 'active',
       primary_stage_id: 'ship',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.2,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -310,7 +310,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Engenharia',
       status: 'active',
       primary_stage_id: 'ship',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.1,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -325,7 +325,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Data',
       status: 'active',
       primary_stage_id: 'sense_plus',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.2,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -339,7 +339,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Liderança',
       status: 'active',
       primary_stage_id: 'sense_plus',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.5,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -353,7 +353,7 @@ export async function seedDefaultAgents(userId: string) {
       primary_discipline: 'Multidisciplinar',
       status: 'active',
       primary_stage_id: 'sense_plus',
-      default_model: 'gemini-3-flash-preview',
+      default_model: 'gemini-1.5-flash',
       temperature: 0.3,
       memory_enabled: true,
       mindflow_enabled: true,
@@ -373,7 +373,7 @@ export async function seedDefaultAgents(userId: string) {
            updated_at: serverTimestamp(),
            created_by: userId
         };
-        await setDoc(doc(db, 'agents', agentId), agentDoc);
+        await setDoc(doc(db, 'agents', agentId), cleanFirestoreData(agentDoc));
 
         // Create initial empty instruction version
         const emptyBlocks = {
@@ -396,7 +396,7 @@ export async function seedDefaultAgents(userId: string) {
         };
 
         const versionId = doc(collection(db, 'agent_instruction_versions')).id;
-        await setDoc(doc(db, 'agent_instruction_versions', versionId), {
+        await setDoc(doc(db, 'agent_instruction_versions', versionId), cleanFirestoreData({
            id: versionId,
            agent_id: agentId,
            version_number: 'v0.1',
@@ -407,7 +407,7 @@ export async function seedDefaultAgents(userId: string) {
            created_at: serverTimestamp(),
            created_by: userId,
            change_summary: 'Seed inicial da Tona'
-        });
+        }));
 
         // Update agent with active version id
         await updateDoc(doc(db, 'agents', agentId), {
@@ -417,7 +417,7 @@ export async function seedDefaultAgents(userId: string) {
         // Create initial flow binding
         if (agentData.primary_stage_id !== 'global') {
           const bindingId = doc(collection(db, 'agent_flow_bindings')).id;
-          await setDoc(doc(db, 'agent_flow_bindings', bindingId), {
+          await setDoc(doc(db, 'agent_flow_bindings', bindingId), cleanFirestoreData({
             id: bindingId,
             agent_id: agentId,
             stage_id: agentData.primary_stage_id,
@@ -430,7 +430,7 @@ export async function seedDefaultAgents(userId: string) {
             is_active: true,
             created_at: serverTimestamp(),
             updated_at: serverTimestamp()
-          });
+          }));
         }
      }
   }
@@ -447,7 +447,7 @@ export async function saveAgent(agentData: Partial<Agent>, userId: string) {
       created_by: agentData.created_by || userId,
       status: agentData.status || 'draft'
     };
-    await setDoc(doc(db, 'agents', id), finalData);
+    await setDoc(doc(db, 'agents', id), cleanFirestoreData(finalData));
     return { success: true, id };
   } catch (e) {
     console.error("Error saving agent:", e);
@@ -537,14 +537,14 @@ export async function duplicateAgent(agentId: string, newName: string, userId: s
       active_version_id: ""
     };
 
-    await setDoc(doc(db, 'agents', newId), newData);
+    await setDoc(doc(db, 'agents', newId), cleanFirestoreData(newData));
 
     // Copy versions if any
     const versionsSnap = await getDocs(query(collection(db, 'agent_instruction_versions'), where('agent_id', '==', agentId), orderBy('created_at', 'desc'), limit(1)));
     if (!versionsSnap.empty) {
       const vData = versionsSnap.docs[0].data() as AgentInstructionVersion;
       const newVId = doc(collection(db, 'agent_instruction_versions')).id;
-      await setDoc(doc(db, 'agent_instruction_versions', newVId), {
+      await setDoc(doc(db, 'agent_instruction_versions', newVId), cleanFirestoreData({
         ...vData,
         id: newVId,
         agent_id: newId,
@@ -554,7 +554,7 @@ export async function duplicateAgent(agentId: string, newName: string, userId: s
         created_at: serverTimestamp(),
         created_by: userId,
         change_summary: `Cópia de ${data.name}`
-      });
+      }));
     }
 
     return { success: true, id: newId };
@@ -576,7 +576,7 @@ export async function createAgentVersion(agentId: string, payload: Partial<Agent
       created_at: serverTimestamp(),
       created_by: userId
     };
-    await setDoc(doc(db, 'agent_instruction_versions', id), finalData);
+    await setDoc(doc(db, 'agent_instruction_versions', id), cleanFirestoreData(finalData));
     return { success: true, id };
   } catch (e) {
     console.error("Error creating agent version:", e);

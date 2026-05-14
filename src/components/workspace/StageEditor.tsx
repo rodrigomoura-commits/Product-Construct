@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Product, ProductStage, StageField, StageKey } from '../../types';
 import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, setDoc, addDoc, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../../lib/firebase';
 import { 
   Info, Brain, Layout, Activity, Boxes, History, 
   HelpCircle, AlertTriangle, Sparkles, CheckCircle2, 
@@ -92,7 +92,7 @@ export default function StageEditor({ stage, product }: StageEditorProps) {
         });
       } else {
         const fieldConfig = STAGE_CONFIG[stage.stage_key].fields.find(f => f.key === fieldKey);
-        await addDoc(collection(db, path), {
+        await addDoc(collection(db, path), cleanFirestoreData({
           product_id: product.id,
           stage_id: stage.id,
           stage_key: stage.stage_key,
@@ -104,7 +104,7 @@ export default function StageEditor({ stage, product }: StageEditorProps) {
           confidence: 0,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
-        });
+        }));
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);

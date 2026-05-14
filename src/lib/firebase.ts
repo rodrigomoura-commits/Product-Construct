@@ -45,3 +45,27 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+/**
+ * Removes undefined values from an object recursively to avoid Firestore errors.
+ */
+export function cleanFirestoreData(data: any): any {
+  if (data === null || data === undefined) return null;
+  
+  if (Array.isArray(data)) {
+    return data.map(item => cleanFirestoreData(item));
+  }
+  
+  if (typeof data === 'object' && !(data instanceof Date) && !(data.constructor?.name === 'Timestamp') && !(data.constructor?.name === 'FieldValue')) {
+    const cleaned: any = {};
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+      if (value !== undefined) {
+        cleaned[key] = cleanFirestoreData(value);
+      }
+    });
+    return cleaned;
+  }
+  
+  return data;
+}

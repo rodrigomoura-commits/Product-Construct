@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { Product, ProductStage } from '../types';
 import { Boxes, Plus, Search, Filter, Loader2, ArrowRight, User, Calendar, MoreVertical, RefreshCw, Settings2, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -74,7 +74,7 @@ export default function Dashboard() {
     setCreating(true);
     const path = 'products';
     try {
-      const docRef = await addDoc(collection(db, path), {
+      const docRef = await addDoc(collection(db, path), cleanFirestoreData({
         name: newProductName,
         description: newProductDesc,
         owner_id: user.uid,
@@ -84,7 +84,7 @@ export default function Dashboard() {
         quality_score: 0,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
-      });
+      }));
       navigate(`/products/${docRef.id}`);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);

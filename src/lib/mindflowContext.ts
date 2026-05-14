@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, getDoc } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { 
   MindflowContext, 
   MindflowUserMemory,
@@ -75,17 +75,17 @@ export async function storeUserMemory(data: {
       user_identifier: data.userIdentifier || null,
       memory_date: new Date().toISOString().split('T')[0],
       memory_time: new Date().toLocaleTimeString(),
-      product: classification.product,
-      context: classification.context,
-      sub_context: classification.sub_context,
+      product: data.productId || 'Geral', // Usar productId ou fallback
+      context: classification.name || 'Geral',
+      sub_context: classification.intention || 'Conversa',
       detected_intention: classification.intention || null,
       user_message: data.userMessage,
       tona_response: data.assistantMessage || null,
       conversation_id: data.conversationId || null,
       product_id: data.productId || null,
       agent_id: data.agentId || null,
-      context_id: classification.context_id || null,
-      context_confidence_score: classification.confidence_score,
+      context_id: classification.id || null,
+      context_confidence_score: classification.confidence_score === 'Alta' ? 0.9 : (classification.confidence_score === 'Média' ? 0.6 : 0.3),
       raw_payload: data.rawPayload || {},
       used_learning_ids: [],
       used_reasoning_ids: [],
@@ -93,22 +93,25 @@ export async function storeUserMemory(data: {
       status: 'completed',
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
-      metadata: classification.confidence_score < 0.75 ? { needs_review: true } : {}
+      metadata: (classification as any).confidence_score === 'Baixa' ? { needs_review: true } : {}
     } as any;
 
-    const docRef = await addDoc(getUserMemoriesCollection(db), docData);
+    const docRef = await addDoc(getUserMemoriesCollection(db), cleanFirestoreData(docData));
     return { id: docRef.id, ...classification };
   } catch (error) {
     console.error("Error storing interaction memory:", error);
     try {
-        await addDoc(getUserMemoriesCollection(db), {
+        await addDoc(getUserMemoriesCollection(db), cleanFirestoreData({
             user_id: data.userId,
             user_message: data.userMessage,
             memory_date: new Date().toISOString().split('T')[0],
             status: 'failed',
+            product: data.productId || 'Geral',
+            context: 'Error Recovery',
             created_at: serverTimestamp(),
+            updated_at: serverTimestamp(),
             metadata: { error: true, error_details: String(error) }
-        } as any);
+        } as any));
     } catch (e) {
         console.error("Critical failure saving memory:", e);
     }
@@ -236,7 +239,7 @@ export async function extractLearningsFromMemories() {
 
         try {
             const responseText = await callGeminiProxy({
-                model: "gemini-3-flash-preview",
+                model: "gemini-1.5-flash",
                 prompt: prompt,
                 config: {
                     responseMimeType: "application/json"
@@ -256,12 +259,12 @@ export async function extractLearningsFromMemories() {
                     source_id: memory.id,
                     scope_type: 'user' as MindflowScope,
                     user_id: memory.user_id,
-                    product_id: memory.product_id || undefined,
+                    product_id: memory.product_id || null,
                     interaction_id: memory.id,
-                    context_id: memory.context_id || undefined,
-                    product: memory.product || undefined,
-                    context: memory.context || undefined,
-                    confidence_score: l.confidence_score,
+                    context_id: memory.context_id || null,
+                    product: memory.product || 'Geral',
+                    context: memory.context || 'Geral',
+                    confidence_score: typeof l.confidence_score === 'number' ? l.confidence_score : 0.5,
                     relevance_score: 0.8,
                     quality_score: 0.8,
                     usage_count: 0,
@@ -274,7 +277,7 @@ export async function extractLearningsFromMemories() {
                     metadata: { original_memory: memory.user_message }
                 };
 
-                const learnRef = await addDoc(collection(db, 'mindflow_learnings'), learningData);
+                const learnRef = await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData(learningData));
                 generatedLearningIds.push(learnRef.id);
             }
 

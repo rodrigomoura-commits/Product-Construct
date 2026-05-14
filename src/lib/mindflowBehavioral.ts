@@ -1,5 +1,5 @@
 import { collection, doc, getDoc, setDoc, addDoc, query, where, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
 import { MindflowBehavioralProfile, MindflowBehavioralSignal } from '../types';
 
 /**
@@ -33,7 +33,7 @@ export async function getBehavioralProfile(userId: string): Promise<MindflowBeha
     metadata: {}
   };
 
-  await setDoc(docRef, newProfile);
+  await setDoc(docRef, cleanFirestoreData(newProfile));
   return { id: userId, ...newProfile } as MindflowBehavioralProfile;
 }
 
@@ -42,11 +42,11 @@ export async function getBehavioralProfile(userId: string): Promise<MindflowBeha
  */
 export async function recordBehavioralSignal(signal: Omit<MindflowBehavioralSignal, 'id' | 'created_at'>) {
   try {
-    const docRef = await addDoc(collection(db, 'mindflow_behavioral_signals'), {
+    const docRef = await addDoc(collection(db, 'mindflow_behavioral_signals'), cleanFirestoreData({
       ...signal,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
-    });
+    }));
     return docRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'mindflow_behavioral_signals');

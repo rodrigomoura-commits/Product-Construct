@@ -1037,7 +1037,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
                                      </div>
                                      <div>
                                         <p className="text-xl font-black text-zinc-900">Google Gemini</p>
-                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: gemini-3-flash-preview</p>
+                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: gemini-1.5-flash</p>
                                      </div>
                                   </div>
                                   <div className={cn(
@@ -1056,16 +1056,24 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
                                   
                                   {llmHealth?.errorType && (
                                      <div className="bg-rose-500/10 p-5 rounded-2xl border border-rose-500/20">
-                                        <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">Diagnostic Details</p>
+                                        <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1 tracking-widest uppercase">Diagnostic Details</p>
                                         <p className="text-sm font-black text-rose-600">{llmHealth.errorType}</p>
-                                        {llmHealth.errorType === 'API_KEY_INVALID' && (
-                                          <div className="mt-4 space-y-2">
-                                            <p className="text-xs text-rose-500 font-medium">Ações recomendadas:</p>
-                                            <ul className="text-[11px] text-rose-500/80 list-disc pl-4 space-y-1">
-                                              <li>Validar GEMINI_API_KEY no ambiente de deploy.</li>
-                                              <li>Confirmar se a chave não foi revogada no Google AI Studio.</li>
-                                              <li>Verificar restrições de IP ou domínio.</li>
-                                            </ul>
+                                        
+                                        {(llmHealth.errorType === 'API_KEY_INVALID' || llmHealth.errorType === 'CONFIG_MISSING') && (
+                                          <div className="mt-4 p-4 bg-white/50 rounded-xl space-y-3">
+                                            <p className="text-[10px] font-black uppercase text-rose-700 tracking-widest">Ação Necessária (Bloqueio Crítico):</p>
+                                            <p className="text-xs text-rose-600 font-bold leading-relaxed">
+                                              A chave <code className="bg-rose-100 px-1 rounded text-rose-800">GEMINI_API_KEY</code> não foi detectada ou é inválida no ambiente do servidor.
+                                            </p>
+                                            <ol className="text-[11px] text-rose-600/80 list-decimal pl-4 space-y-2 font-medium">
+                                              <li>Acesse o painel do <strong>Google AI Studio</strong>.</li>
+                                              <li>Vá em <strong>Settings</strong> ou <strong>Secrets</strong>.</li>
+                                              <li>Adicione/Atualize o segredo: <br/>
+                                                <span className="font-mono bg-rose-100 px-1 rounded text-rose-800">Key: GEMINI_API_KEY</span><br/>
+                                                <span className="font-mono bg-rose-100 px-1 rounded text-rose-800">Value: [Sua Chave API]</span>
+                                              </li>
+                                              <li>Reinicie ou faça o redeploy da aplicação.</li>
+                                            </ol>
                                           </div>
                                         )}
                                      </div>

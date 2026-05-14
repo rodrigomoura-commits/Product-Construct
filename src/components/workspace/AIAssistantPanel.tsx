@@ -12,7 +12,7 @@ import { cn } from '../../lib/utils';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, cleanFirestoreData } from '../../lib/firebase';
 import { calculateProductMaturity } from '../../lib/maturity';
 import { retrieveMindflowContext, extractMindflowLearning } from '../../lib/mindflow';
 import { storeUserMemory } from '../../lib/mindflowContext';
@@ -396,7 +396,7 @@ export default function AIAssistantPanel({ product, activeStage, stages }: AIAss
             updated_at: serverTimestamp()
           });
         } else {
-          await addDoc(collection(db, fieldsPath), {
+          await addDoc(collection(db, fieldsPath), cleanFirestoreData({
             product_id: product.id,
             stage_key: update.stage_focus,
             field_key: mem.field_key,
@@ -408,7 +408,7 @@ export default function AIAssistantPanel({ product, activeStage, stages }: AIAss
             quality_status: 'draft',
             created_at: serverTimestamp(),
             updated_at: serverTimestamp()
-          });
+          }));
         }
       } catch (e) {
         console.error("Error updating field:", e);

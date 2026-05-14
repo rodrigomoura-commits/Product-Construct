@@ -1,5 +1,5 @@
 import { collection, doc, addDoc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
 import { MindflowCognitiveTrace, MindflowCognitiveTraceEvent } from '../types';
 
 /**
@@ -7,7 +7,7 @@ import { MindflowCognitiveTrace, MindflowCognitiveTraceEvent } from '../types';
  */
 export async function createCognitiveTrace(data: Partial<MindflowCognitiveTrace>): Promise<string> {
   try {
-    const docRef = await addDoc(collection(db, 'mindflow_cognitive_traces'), {
+    const docRef = await addDoc(collection(db, 'mindflow_cognitive_traces'), cleanFirestoreData({
       ...data,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
@@ -19,7 +19,7 @@ export async function createCognitiveTrace(data: Partial<MindflowCognitiveTrace>
       adaptation_applied: data.adaptation_applied || {},
       warnings: data.warnings || [],
       save_actions: data.save_actions || []
-    });
+    }));
     return docRef.id;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'mindflow_cognitive_traces');
@@ -32,12 +32,12 @@ export async function createCognitiveTrace(data: Partial<MindflowCognitiveTrace>
  */
 export async function addTraceEvent(traceId: string, order: number, event: Omit<MindflowCognitiveTraceEvent, 'id' | 'trace_id' | 'event_order' | 'created_at'>) {
   try {
-    await addDoc(collection(db, 'mindflow_cognitive_trace_events'), {
+    await addDoc(collection(db, 'mindflow_cognitive_trace_events'), cleanFirestoreData({
       trace_id: traceId,
       event_order: order,
       ...event,
       created_at: serverTimestamp()
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, 'mindflow_cognitive_trace_events');
   }

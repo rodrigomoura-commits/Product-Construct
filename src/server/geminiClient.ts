@@ -8,11 +8,16 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 export function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
 
-  if (!apiKey || apiKey.trim().length < 20) {
-    throw new Error("GEMINI_API_KEY is missing or invalid in server environment. Please check your configuration.");
+  if (!apiKey || apiKey.trim().length < 5) {
+    const reason = !apiKey ? "Missing" : "Too short";
+    console.error(`CRITICAL: GEMINI_API_KEY is ${reason} in process.env (Length: ${apiKey?.length || 0})`);
+    throw new Error(`GEMINI_API_KEY is ${reason.toLowerCase()} or invalid in server environment. Please configure it in the AI Studio UI Secrets panel.`);
   }
 
-  return new GoogleGenerativeAI(apiKey.trim());
+  const trimmed = apiKey.trim();
+  console.log(`[GeminiClient] Using API Key: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)} (Length: ${trimmed.length})`);
+
+  return new GoogleGenerativeAI(trimmed);
 }
 
 /**
@@ -22,10 +27,11 @@ export function assertGeminiConfigured() {
   const apiKey = process.env.GEMINI_API_KEY;
 
   return {
-    configured: Boolean(apiKey && apiKey.trim().length >= 20),
+    configured: Boolean(apiKey && apiKey.trim().length >= 5),
     keyPreview: apiKey
-      ? `${apiKey.trim().slice(0, 6)}...${apiKey.trim().slice(-4)}`
+      ? `${apiKey.trim().slice(0, 4)}...${apiKey.trim().slice(-4)}`
       : null,
+    length: apiKey ? apiKey.trim().length : 0
   };
 }
 

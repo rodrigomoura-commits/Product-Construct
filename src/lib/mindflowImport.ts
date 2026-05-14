@@ -2,7 +2,7 @@ import {
   collection, addDoc, serverTimestamp, query, where, 
   getDocs, limit, doc, updateDoc, writeBatch, orderBy, getDoc
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from './firebase';
+import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
 import { 
   MindflowLearning, MindflowImportJob, MindflowKnowledgeType, 
   MindflowImportJobEvent, MindflowReasoningStatus, MindflowReasoningType, 
@@ -220,7 +220,7 @@ export async function createMindflowImportJob(
     metadata: {}
   };
 
-  const docRef = await addDoc(collection(db, 'mindflow_import_jobs'), jobData);
+  const docRef = await addDoc(collection(db, 'mindflow_import_jobs'), cleanFirestoreData(jobData));
   return docRef.id;
 }
 
@@ -264,7 +264,7 @@ export async function emitImportJobEvent({
 
     // We use a timestamp-based order or a count
     const eventId = uuidv4();
-    await addDoc(eventRef, {
+    await addDoc(eventRef, cleanFirestoreData({
       id: eventId,
       import_job_id,
       event_order: Date.now(),
@@ -274,7 +274,7 @@ export async function emitImportJobEvent({
       progress,
       metadata,
       created_at: serverTimestamp()
-    });
+    }));
 
     await updateDoc(jobRef, {
       progress,
@@ -321,7 +321,7 @@ export async function importMindflowLearningsFromCsvWithProgress(
   // 1. Create the job
   let jobRef;
   try {
-    jobRef = await addDoc(collection(db, 'mindflow_import_jobs'), {
+    jobRef = await addDoc(collection(db, 'mindflow_import_jobs'), cleanFirestoreData({
       import_type: 'learnings_csv',
       file_name: fileName,
       file_size_bytes: fileSize,
@@ -340,7 +340,7 @@ export async function importMindflowLearningsFromCsvWithProgress(
       created_at: serverTimestamp(),
       started_at: serverTimestamp(),
       metadata: options
-    } as any);
+    } as any));
   } catch (error: any) {
     console.error('CRITICAL: Failed to initiate import job in Firestore:', error);
     if (error.message?.includes('Quota exceeded')) {
@@ -606,7 +606,7 @@ export async function generateDeepReasoningsFromImport(
     
     if (Math.random() > 0.1) {
       const docRef = doc(collection(db, 'mindflow_reasonings'));
-      await addDoc(collection(db, 'mindflow_reasonings'), {
+      await addDoc(collection(db, 'mindflow_reasonings'), cleanFirestoreData({
         id: docRef.id,
         reasoning_date: new Date().toISOString().split('T')[0],
         reasoning_type: type,
@@ -627,7 +627,7 @@ export async function generateDeepReasoningsFromImport(
         generated_by: userId,
         created_at: serverTimestamp(),
         metadata: { import_job_id: importJobId }
-      });
+      }));
       
       results.reasonings_created++;
       if (status === 'active') results.reasonings_activated++;

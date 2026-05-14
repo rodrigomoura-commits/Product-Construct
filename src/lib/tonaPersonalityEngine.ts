@@ -8,7 +8,7 @@ import {
   serverTimestamp, 
   Timestamp 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { 
   TonaPersonalityBase, 
   TonaUserPersonality, 
@@ -187,11 +187,11 @@ export async function ensureTonaPersonalitySeed(user?: { uid: string, email: str
   try {
     const snap = await getDoc(BASE_PERSONALITY_REF);
     if (!snap.exists()) {
-      await setDoc(BASE_PERSONALITY_REF, {
+      await setDoc(BASE_PERSONALITY_REF, cleanFirestoreData({
         ...FALLBACK_BASE_PERSONALITY,
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
-      });
+      }));
     }
 
     if (user) {
@@ -218,11 +218,11 @@ export async function ensureTonaPersonalitySeed(user?: { uid: string, email: str
           ];
         }
 
-        await setDoc(userRef, {
+        await setDoc(userRef, cleanFirestoreData({
           ...initialData,
           created_at: serverTimestamp(),
           updated_at: serverTimestamp()
-        });
+        }));
       }
     }
   } catch (error) {
@@ -338,22 +338,22 @@ export async function analyzeUserMessageForStyle(userId: string, email: string, 
         updates[signal.field] = signal.value;
       }
 
-      await addDoc(collection(db, 'tona_personality_learning_events'), {
+      await addDoc(collection(db, 'tona_personality_learning_events'), cleanFirestoreData({
         user_id: userId,
-        user_email: email,
+        user_email: email || 'system@mindflow.v2',
         source: "chat",
         event_type: "style_pattern",
-        observed_text_sample: message.substring(0, 100),
+        observed_text_sample: (message || '').substring(0, 100),
         extracted_signal: {
-          type: signal.type,
-          value: signal.value,
-          interpretation: signal.interpretation
+          type: signal.type || 'unknown',
+          value: signal.value !== undefined ? signal.value : null,
+          interpretation: signal.interpretation || 'No interpretation'
         },
         confidence: 0.7,
         should_apply: true,
         reviewed_by_user: false,
         created_at: serverTimestamp()
-      });
+      } as any));
     }
 
     await updateDoc(doc(db, 'tona_user_personalities', userId), {
@@ -417,8 +417,8 @@ ${basePersonality.forbidden_behaviors.map(b => `- ${b}`).join('\n')}
 
 export async function resetUserPersonality(userId: string, email: string) {
   const ref = doc(db, 'tona_user_personalities', userId);
-  await setDoc(ref, {
+  await setDoc(ref, cleanFirestoreData({
     ...DEFAULT_USER_PERSONALITY(userId, email),
     updated_at: serverTimestamp()
-  });
+  }));
 }

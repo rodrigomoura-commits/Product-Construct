@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, onSnapshot, orderBy, limit, getDoc, writeBatch } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { 
   MindflowLearning, 
   MindflowLearningCandidate, 
@@ -164,7 +164,7 @@ export async function retrieveMindflowContext(params: {
     }
 
     // 3. LOG RETRIEVAL
-    await addDoc(collection(db, 'mindflow_retrieval_logs'), {
+    await addDoc(collection(db, 'mindflow_retrieval_logs'), cleanFirestoreData({
       user_id: userId,
       product_id: productId || null,
       stage_id: stageId || null,
@@ -180,7 +180,7 @@ export async function retrieveMindflowContext(params: {
         history_depth: userMemories.length,
         conflict_shield_active: criticalInvolvedIds.size > 0
       }
-    } as any);
+    } as any));
 
   } catch (e) {
     console.error("Mindflow Context Retrieval failed:", e);
@@ -269,7 +269,7 @@ export async function extractMindflowLearning(params: {
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -300,7 +300,7 @@ export async function extractMindflowLearning(params: {
           metadata: { reason: cand.reason }
         };
 
-        const docRef = await addDoc(collection(db, 'mindflow_learning_candidates'), candidateData);
+        const docRef = await addDoc(collection(db, 'mindflow_learning_candidates'), cleanFirestoreData(candidateData));
 
         // Auto-promotion if extremely high confidence
         if (cand.confidence > 0.95) {
@@ -400,7 +400,7 @@ export async function saveMindflowLearning(params: {
     metadata: params.metadata || {}
   };
 
-  const docRef = await addDoc(collection(db, 'mindflow_learnings'), learningData);
+  const docRef = await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData(learningData));
   return docRef.id;
 }
 
@@ -472,14 +472,14 @@ export async function promoteToBaseLearning(adminId: string, learningId: string,
     updated_at: serverTimestamp()
   };
 
-  const newRef = await addDoc(collection(db, 'mindflow_learnings'), baseData);
+  const newRef = await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData(baseData));
   
   await updateDoc(learningRef, {
     is_promoted_to_base: true,
     updated_at: serverTimestamp()
   });
 
-  await addDoc(collection(db, 'mindflow_learning_relationships'), {
+  await addDoc(collection(db, 'mindflow_learning_relationships'), cleanFirestoreData({
     source_learning_id: newRef.id,
     target_learning_id: learningId,
     relationship_type: 'promoted_from',
@@ -487,7 +487,7 @@ export async function promoteToBaseLearning(adminId: string, learningId: string,
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
     metadata: { promoted_by: adminId }
-  } as Omit<MindflowLearningRelationship, 'id'>);
+  } as Omit<MindflowLearningRelationship, 'id'>));
 
   return newRef.id;
 }

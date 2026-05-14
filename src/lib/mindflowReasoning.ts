@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, Timestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { 
   MindflowLearning, 
   MindflowReasoning, 
@@ -25,7 +25,7 @@ import { callGeminiProxy } from './geminiProxy';
 export async function runDailyMindflowReasoning(adminId: string) {
   console.log("Starting Mindflow Deep Reasoning Engine...");
   
-  const runRef = await addDoc(collection(db, 'mindflow_reasoning_runs'), {
+  const runRef = await addDoc(collection(db, 'mindflow_reasoning_runs'), cleanFirestoreData({
     run_date: new Date().toISOString().split('T')[0],
     started_at: serverTimestamp(),
     status: 'running',
@@ -37,7 +37,7 @@ export async function runDailyMindflowReasoning(adminId: string) {
     reasonings_pending_review: 0,
     contradictions_detected: 0,
     metadata: { started_by: adminId }
-  } as any);
+  } as any));
 
   const stats = {
     total: 0,
@@ -127,24 +127,24 @@ export async function runDailyMindflowReasoning(adminId: string) {
         risks_if_ignored: cand.risks_if_ignored || []
       };
 
-      const reasonDoc = await addDoc(collection(db, 'mindflow_reasonings'), finalReasoning);
+      const reasonDoc = await addDoc(collection(db, 'mindflow_reasonings'), cleanFirestoreData(finalReasoning));
       
       // Create Traceability Links
       for (const lId of (finalReasoning.source_learning_ids || [])) {
-        await addDoc(collection(db, 'mindflow_learning_reasoning_links'), {
+        await addDoc(collection(db, 'mindflow_learning_reasoning_links'), cleanFirestoreData({
           learning_id: lId,
           reasoning_id: reasonDoc.id,
           learning_role: 'primary_basis',
           contribution_score: 0.9,
           created_at: serverTimestamp(),
           metadata: { run_id: runRef.id }
-        } as Omit<MindflowLearningReasoningLink, 'id'>);
+        } as Omit<MindflowLearningReasoningLink, 'id'>));
       }
 
       stats.generated++;
       if (finalReasoning.is_active) stats.activated++;
       else stats.pending++;
-      if (status === 'contradicted') stats.contradictions++;
+      if (finalReasoning.status === 'contradicted') stats.contradictions++;
     }
 
     // 4. FINALIZE RUN
@@ -189,7 +189,7 @@ async function generateStrategicReasonings(base: MindflowLearning[]): Promise<Pa
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -228,7 +228,7 @@ async function generateBehavioralReasonings(acquired: MindflowLearning[], base: 
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -266,7 +266,7 @@ async function generateSystemicReasonings(memories: MindflowUserMemory[], learni
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-3-flash-preview",
+      model: "gemini-1.5-flash",
       prompt: prompt,
       config: {
         responseMimeType: "application/json"

@@ -3,7 +3,7 @@ import {
   query, where, orderBy, limit, serverTimestamp, 
   getDoc, setDoc 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, cleanFirestoreData } from './firebase';
 import { 
   MindflowUserMemory, 
   MindflowLearning, 
@@ -197,7 +197,7 @@ export async function runTonaConversationTurn(params: {
     try {
       const responseText = await callGeminiProxy({
         prompt: prompt,
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         config: {
           responseMimeType: "application/json"
         }
@@ -256,7 +256,7 @@ export async function runTonaConversationTurn(params: {
       console.error("[MindFlow] Interaction memory update failed:", memoryError);
       
       // Log failure but don't stop the pipeline
-      await addDoc(collection(db, 'mindflow_logs'), {
+      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
         productId: productId || 'system',
         userId: userId,
         userEmail: userEmail || null,
@@ -265,7 +265,7 @@ export async function runTonaConversationTurn(params: {
         status: 'error',
         errorMessage: memoryError?.message || String(memoryError),
         createdAt: serverTimestamp()
-      });
+      }));
     }
 
     currentStep = 'persisting_updates';
@@ -282,7 +282,7 @@ export async function runTonaConversationTurn(params: {
       });
     } catch (persistError: any) {
       console.error("[MindFlow] Persistence of updates failed:", persistError);
-      await addDoc(collection(db, 'mindflow_logs'), {
+      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
         productId: productId || 'system',
         userId: userId,
         userEmail: userEmail || null,
@@ -291,7 +291,7 @@ export async function runTonaConversationTurn(params: {
         status: 'error',
         errorMessage: persistError?.message || String(persistError),
         createdAt: serverTimestamp()
-      });
+      }));
     }
 
     currentStep = 'analyzing_style';
@@ -322,7 +322,7 @@ export async function runTonaConversationTurn(params: {
     
     // Log to mindflow_logs
     try {
-      await addDoc(collection(db, 'mindflow_logs'), {
+      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
         productId: productId || 'system',
         userId: userId,
         userEmail: userEmail || null,
@@ -337,7 +337,7 @@ export async function runTonaConversationTurn(params: {
         environment: 'production',
         activeStage: stageId || 'unknown',
         requestPayloadPreview: { userMessageLength: userMessage?.length }
-      });
+      }));
     } catch (logError) {
       console.error("Critical: Failed to save mindflow_log:", logError);
     }
@@ -389,9 +389,9 @@ async function extractAndApplyPersistables(params: any) {
     for (const rec of tonaOutput.save_recommendations) {
       if (rec.confidence_score >= 0.8) {
         if (rec.target === 'mindflow_learning') {
-          await addDoc(collection(db, 'mindflow_learnings'), {
+          await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData({
             learning_type: 'Adquirida',
-            theme: classification.product || 'Geral',
+            theme: classification.name || 'Geral',
             learning: rec.content,
             classification: rec.classification || 'aprendizado',
             source_type: 'memory',
@@ -399,12 +399,14 @@ async function extractAndApplyPersistables(params: any) {
             scope_type: 'user',
             user_id: userId,
             product_id: productId || null,
+            product: productId || 'Geral',
             is_active: true,
             confidence_score: rec.confidence_score,
             learning_date: new Date().toISOString().split('T')[0],
             created_at: serverTimestamp(),
-            updated_at: serverTimestamp()
-          });
+            updated_at: serverTimestamp(),
+            metadata: { confidence_llm: rec.confidence_score }
+          } as any));
         }
       } 
     }
@@ -441,13 +443,13 @@ async function updateUserMemoryWithResponse(params: {
   try {
     const memorySnap = await getDoc(getUserMemoryDoc(db, interactionId));
     if (memorySnap.exists()) {
-      await addDoc(collection(db, 'mindflow_runtime_logs'), {
+      await addDoc(collection(db, 'mindflow_runtime_logs'), cleanFirestoreData({
         interaction_id: interactionId,
         user_id: memorySnap.data()?.user_id,
         base_learning_ids: learningsUsed,
         reasoning_ids: reasoningsUsed,
         created_at: serverTimestamp()
-      });
+      }));
     }
   } catch (logError) {
     console.error("Failed to log runtime activity:", logError);
