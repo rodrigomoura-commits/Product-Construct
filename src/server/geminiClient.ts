@@ -6,29 +6,39 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
  */
 
 export function getGeminiClient() {
-  const keys = [
-    process.env.GEMINI_API_KEY,
-    process.env.VITE_GEMINI_API_KEY,
-    process.env.GOOGLE_API_KEY,
-    process.env.API_KEY,
-    process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  const keysWithNames = [
+    { name: 'GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
+    { name: 'VITE_GEMINI_API_KEY', value: process.env.VITE_GEMINI_API_KEY },
+    { name: 'GOOGLE_API_KEY', value: process.env.GOOGLE_API_KEY },
+    { name: 'API_KEY', value: process.env.API_KEY },
+    { name: 'NEXT_PUBLIC_GEMINI_API_KEY', value: process.env.NEXT_PUBLIC_GEMINI_API_KEY }
   ];
 
   // Find the first key that is not empty and not a placeholder string
-  let apiKey = keys.find(k => k && k.trim().length >= 5 && k !== 'undefined' && k !== 'null');
+  let found = keysWithNames.find(k => typeof k.value === 'string' && k.value.trim().length >= 5 && k.value !== 'undefined' && k.value !== 'null');
+  let apiKey = found?.value;
+  let keySource = found?.name || 'NONE';
 
   if (!apiKey) {
-    console.error("CRITICAL: No valid Gemini API Key found in environment variables.");
+    const availableNames = keysWithNames.filter(k => k.value).map(k => k.name);
+    console.error(`CRITICAL: No valid Gemini API Key found. Found variables but they were invalid: ${availableNames.join(', ')}`);
     throw new Error("Gemini API Key is missing or invalid. Please configure GEMINI_API_KEY in the Secrets panel.");
   }
 
-  // Remove potential quotes if user accidentally wrapped the secret
+  // Remove potential quotes
   let trimmed = apiKey.trim();
   if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
     trimmed = trimmed.slice(1, -1);
   }
 
-  console.log(`[GeminiClient] Initializing with key: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)} (Length: ${trimmed.length}, Prefix: ${trimmed.startsWith('AIza') ? 'OK' : 'INVALID'})`);
+  // Check if it's a placeholder from .env.example
+  if (trimmed === 'MY_GEMINI_API_KEY') {
+    console.error(`CRITICAL: Gemini API Key is still set to placeholder 'MY_GEMINI_API_KEY' from ${keySource}`);
+    throw new Error("Gemini API Key is using a placeholder value. Please set a real key in the Secrets panel.");
+  }
+
+  const status = trimmed.startsWith('AIza') ? 'OK' : 'INVALID_PREFIX';
+  console.log(`[GeminiClient] Using key from ${keySource} (Length: ${trimmed.length}, Prefix: ${status}, Preview: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)})`);
 
   return new GoogleGenerativeAI(trimmed);
 }
@@ -37,23 +47,29 @@ export function getGeminiClient() {
  * Asserts if Gemini is properly configured without exposing the full key.
  */
 export function assertGeminiConfigured() {
-  const keys = [
-    process.env.GEMINI_API_KEY,
-    process.env.VITE_GEMINI_API_KEY,
-    process.env.GOOGLE_API_KEY,
-    process.env.API_KEY
+  const keysWithNames = [
+    { name: 'GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
+    { name: 'VITE_GEMINI_API_KEY', value: process.env.VITE_GEMINI_API_KEY },
+    { name: 'GOOGLE_API_KEY', value: process.env.GOOGLE_API_KEY },
+    { name: 'API_KEY', value: process.env.API_KEY }
   ];
 
-  const apiKey = keys.find(k => k && k.trim().length >= 5 && k !== 'undefined' && k !== 'null');
+  const found = keysWithNames.find(k => typeof k.value === 'string' && k.value.trim().length >= 5 && k.value !== 'undefined' && k.value !== 'null');
+  const apiKey = found?.value;
+  const keySource = found?.name || 'NONE';
+  
   const trimmed = apiKey ? apiKey.trim() : null;
+  const finalKey = (trimmed && (trimmed.startsWith('"') || trimmed.startsWith("'"))) ? trimmed.slice(1, -1) : trimmed;
 
   return {
-    configured: Boolean(trimmed && trimmed.length >= 5),
-    keyPreview: trimmed
-      ? `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
+    configured: Boolean(finalKey && finalKey.length >= 5 && finalKey !== 'MY_GEMINI_API_KEY'),
+    keySource,
+    keyPreview: finalKey
+      ? `${finalKey.slice(0, 4)}...${finalKey.slice(-4)}`
       : null,
-    length: trimmed ? trimmed.length : 0,
-    prefixOk: trimmed ? trimmed.startsWith('AIza') : false
+    length: finalKey ? finalKey.length : 0,
+    prefixOk: finalKey ? finalKey.startsWith('AIza') : false,
+    isPlaceholder: finalKey === 'MY_GEMINI_API_KEY'
   };
 }
 

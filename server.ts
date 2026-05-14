@@ -11,9 +11,15 @@ async function startServer() {
   console.log("[Server] Checking Gemini configuration...");
   const geminiStatus = assertGeminiConfigured();
   if (geminiStatus.configured) {
-    console.log(`[Server] Gemini API Key found (${geminiStatus.keyPreview}), Prefix OK: ${geminiStatus.prefixOk}`);
+    console.log(`[Server] Gemini API Key found from ${geminiStatus.keySource}`);
+    console.log(`[Server] Preview: ${geminiStatus.keyPreview}`);
+    console.log(`[Server] Length: ${geminiStatus.length}`);
+    console.log(`[Server] Prefix OK (starts with AIza): ${geminiStatus.prefixOk}`);
   } else {
     console.warn("[Server] Gemini API Key is MISSING or INVALID");
+    if (geminiStatus.isPlaceholder) {
+      console.warn("[Server] Reason: Key is set to placeholder 'MY_GEMINI_API_KEY'");
+    }
   }
 
   app.use(express.json());
