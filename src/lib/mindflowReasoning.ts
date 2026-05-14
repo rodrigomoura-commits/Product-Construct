@@ -13,6 +13,7 @@ import {
   MindflowLearningReasoningLink
 } from '../types';
 import { callGeminiProxy } from './geminiProxy';
+import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW REASONING ENGINE (V2)
@@ -189,7 +190,7 @@ async function generateStrategicReasonings(base: MindflowLearning[]): Promise<Pa
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -228,7 +229,7 @@ async function generateBehavioralReasonings(acquired: MindflowLearning[], base: 
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -266,7 +267,7 @@ async function generateSystemicReasonings(memories: MindflowUserMemory[], learni
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"

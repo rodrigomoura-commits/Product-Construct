@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { db, auth } from '../../../lib/firebase';
+import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
 import { 
   doc, updateDoc, collection, addDoc, 
   serverTimestamp, query, where, getDocs, 
@@ -119,7 +120,7 @@ export default function AgentEditorDrawer({ agent, onClose }: Props) {
       Responda apenas com o texto melhorado.`;
 
       const improvedText = await callGeminiProxy({
-        model: "gemini-3-flash-preview",
+        model: GEMINI_MODEL,
         prompt: prompt
       });
       if (improvedText) {
@@ -318,10 +319,9 @@ export default function AgentEditorDrawer({ agent, onClose }: Props) {
                                   onChange={e => setEditedAgent({...editedAgent, default_model: e.target.value})}
                                   className="w-full px-5 py-4 bg-zinc-50 border border-zinc-100 rounded-2xl font-bold font-mono"
                                 >
-                                   <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
-                                   <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                                   <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                                   <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                                   {GEMINI_MODELS.map(m => (
+                                     <option key={m.value} value={m.value}>{m.label}</option>
+                                   ))}
                                 </select>
                              </div>
                              <div className="space-y-2">

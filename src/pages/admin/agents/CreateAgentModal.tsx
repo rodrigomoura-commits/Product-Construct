@@ -5,6 +5,7 @@ import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 import { Agent, StageKey } from '../../../types';
+import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
 
 interface Props {
   isOpen: boolean;
@@ -50,7 +51,7 @@ export default function CreateAgentModal({ isOpen, onClose, onSuccess }: Props) 
     primary_discipline: 'Product Management',
     primary_stage_id: 'sense' as StageKey | 'global',
     status: 'draft' as const,
-    default_model: 'gemini-1.5-flash',
+    default_model: GEMINI_MODEL,
     temperature: 0.4,
     mindflow_enabled: true,
     initial_instruction: '',
@@ -266,8 +267,9 @@ export default function CreateAgentModal({ isOpen, onClose, onSuccess }: Props) 
                           value={formData.default_model}
                           onChange={e => setFormData({ ...formData, default_model: e.target.value })}
                         >
-                          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                          <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                          {GEMINI_MODELS.map(m => (
+                            <option key={m.value} value={m.value}>{m.label}</option>
+                          ))}
                         </select>
                       </div>
                       <div>

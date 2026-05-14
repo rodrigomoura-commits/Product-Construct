@@ -1,28 +1,32 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
+
+const FALLBACK_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || FALLBACK_MODEL;
 
 /**
  * GEMINI CLIENT HELPER
  * Centralizes authentication and validation for Google Generative AI.
  */
 
-export function getGeminiClient() {
-  const keysWithNames = [
-    { name: 'GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
-    { name: 'VITE_GEMINI_API_KEY', value: process.env.VITE_GEMINI_API_KEY },
-    { name: 'GOOGLE_API_KEY', value: process.env.GOOGLE_API_KEY },
-    { name: 'API_KEY', value: process.env.API_KEY },
-    { name: 'NEXT_PUBLIC_GEMINI_API_KEY', value: process.env.NEXT_PUBLIC_GEMINI_API_KEY }
-  ];
-
-  // Find the first key that is not empty and not a placeholder string
-  let found = keysWithNames.find(k => typeof k.value === 'string' && k.value.trim().length >= 5 && k.value !== 'undefined' && k.value !== 'null');
-  let apiKey = found?.value;
-  let keySource = found?.name || 'NONE';
+export function getGeminiClient(providedKey?: string) {
+  let apiKey = providedKey;
 
   if (!apiKey) {
-    const availableNames = keysWithNames.filter(k => k.value).map(k => k.name);
-    console.error(`CRITICAL: No valid Gemini API Key found. Found variables but they were invalid: ${availableNames.join(', ')}`);
-    throw new Error("Gemini API Key is missing or invalid. Please configure GEMINI_API_KEY in the Secrets panel.");
+    const keysWithNames = [
+      { name: 'GEMINI_API_KEY', value: process.env.GEMINI_API_KEY },
+      { name: 'VITE_GEMINI_API_KEY', value: process.env.VITE_GEMINI_API_KEY },
+      { name: 'GOOGLE_API_KEY', value: process.env.GOOGLE_API_KEY },
+      { name: 'API_KEY', value: process.env.API_KEY },
+      { name: 'NEXT_PUBLIC_GEMINI_API_KEY', value: process.env.NEXT_PUBLIC_GEMINI_API_KEY }
+    ];
+
+    // Find the first key that is not empty and not a placeholder string
+    let found = keysWithNames.find(k => typeof k.value === 'string' && k.value.trim().length >= 5 && k.value !== 'undefined' && k.value !== 'null');
+    apiKey = found?.value;
+
+    if (!apiKey) {
+      throw new Error("Gemini API Key is missing or invalid. Please configure GEMINI_API_KEY in the Secrets panel.");
+    }
   }
 
   // Remove potential quotes
@@ -31,16 +35,7 @@ export function getGeminiClient() {
     trimmed = trimmed.slice(1, -1);
   }
 
-  // Check if it's a placeholder from .env.example
-  if (trimmed === 'MY_GEMINI_API_KEY') {
-    console.error(`CRITICAL: Gemini API Key is still set to placeholder 'MY_GEMINI_API_KEY' from ${keySource}`);
-    throw new Error("Gemini API Key is using a placeholder value. Please set a real key in the Secrets panel.");
-  }
-
-  const status = trimmed.startsWith('AIza') ? 'OK' : 'INVALID_PREFIX';
-  console.log(`[GeminiClient] Using key from ${keySource} (Length: ${trimmed.length}, Prefix: ${status}, Preview: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)})`);
-
-  return new GoogleGenerativeAI(trimmed);
+  return new GoogleGenAI({ apiKey: trimmed });
 }
 
 /**
@@ -61,59 +56,214 @@ export function assertGeminiConfigured() {
   const trimmed = apiKey ? apiKey.trim() : null;
   const finalKey = (trimmed && (trimmed.startsWith('"') || trimmed.startsWith("'"))) ? trimmed.slice(1, -1) : trimmed;
 
+  const placeholders = [
+    'MY_GEMINI_API_KEY',
+    'YOUR_API_KEY',
+    'Gemini API Key is using a placeholder value'
+  ];
+  const isPlaceholder = finalKey ? placeholders.some(p => finalKey.includes(p)) : false;
+
   return {
-    configured: Boolean(finalKey && finalKey.length >= 5 && finalKey !== 'MY_GEMINI_API_KEY'),
+    configured: Boolean(finalKey && finalKey.length >= 5 && !isPlaceholder),
     keySource,
     keyPreview: finalKey
       ? `${finalKey.slice(0, 4)}...${finalKey.slice(-4)}`
       : null,
     length: finalKey ? finalKey.length : 0,
     prefixOk: finalKey ? finalKey.startsWith('AIza') : false,
-    isPlaceholder: finalKey === 'MY_GEMINI_API_KEY'
+    isPlaceholder
   };
 }
 
 /**
  * Health check for the LLM Provider
  */
-export async function checkGeminiHealth() {
+export async function checkGeminiHealth(providedKey?: string) {
+  const config = assertGeminiConfigured();
+  const timestamp = new Date().toISOString();
+  let status: any = "unknown_error";
+  let message = "Erro ao validar integração.";
+  let recommendedAction = "Verifique os detalhes técnicos e a configuração do ambiente.";
+  let availableModels: any[] = [];
+  let canListModels = false;
+  let canCallGenerateContent = false;
+
   try {
-    const config = assertGeminiConfigured();
-    if (!config.configured) {
+    // 1. Check if key exists
+    if (!config.configured && !providedKey) {
       return {
-        provider: "gemini",
-        status: "error",
-        errorType: "CONFIG_MISSING",
-        message: "GEMINI_API_KEY is not configured.",
-        ...config
+        provider: "google_gemini",
+        status: config.isPlaceholder ? "placeholder_key" : "missing_key",
+        envKey: "GEMINI_API_KEY",
+        modelEnvKey: "GEMINI_MODEL",
+        configuredModel: GEMINI_MODEL,
+        canReadEnv: config.length > 0,
+        canListModels: false,
+        canCallGenerateContent: false,
+        message: config.isPlaceholder 
+          ? "A chave configurada é um placeholder (texto de exemplo)." 
+          : "GEMINI_API_KEY não foi encontrada no ambiente.",
+        recommendedAction: "Adicione uma GEMINI_API_KEY válida nas variáveis de ambiente.",
+        technicalDetails: { timestamp, errorCode: config.isPlaceholder ? "PLACEHOLDER" : "MISSING" }
       };
     }
 
-    const ai = getGeminiClient();
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    // Minimal call
-    const result = await model.generateContent("echo ok");
-    const text = result.response.text();
+    // 2. Validate prefix and placeholder (Step 2 of the logic requested)
+    // We already moved placeholder check to checkGeminiHealth logic if not in assertGeminiConfigured
+    if (config.isPlaceholder && !providedKey) {
+       // already handled above
+    }
 
-    return {
-      provider: "gemini",
-      status: text.toLowerCase().includes("ok") ? "success" : "degraded",
-      message: text.toLowerCase().includes("ok") ? "Provider is healthy" : "Provider returned unexpected response",
-      ...config
-    };
-  } catch (error: any) {
-    let errorType = "UNKNOWN_ERROR";
-    if (error?.message?.includes("API key not valid")) {
-      errorType = "API_KEY_INVALID";
+    const ai = getGeminiClient(providedKey);
+    
+    // 3. List Models (Step 3 & 4)
+    try {
+      const response = await ai.models.list();
+      availableModels = (response.models || []).map(m => ({
+        name: m.name,
+        displayName: m.displayName,
+        supportedGenerationMethods: m.supportedGenerationMethods
+      }));
+      canListModels = true;
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("API key not valid") || errMsg.includes("invalid-api-key")) {
+        return {
+          provider: "google_gemini",
+          status: "invalid_key",
+          envKey: "GEMINI_API_KEY",
+          canReadEnv: true,
+          canListModels: false,
+          canCallGenerateContent: false,
+          message: "API Key inválida ou recusada pelo Google.",
+          recommendedAction: "Verifique se a chave foi copiada corretamente do Google AI Studio.",
+          technicalDetails: { timestamp, errorCode: "INVALID_KEY", errorMessage: errMsg }
+        };
+      }
+      throw err; // bubble up for other network/disabled errors
+    }
+
+    // 4. Validate configured model (Step 4 & 5)
+    const targetModel = GEMINI_MODEL.startsWith('models/') ? GEMINI_MODEL : `models/${GEMINI_MODEL}`;
+    const foundModel = availableModels.find(m => m.name === targetModel);
+
+    if (!foundModel) {
+      return {
+        provider: "google_gemini",
+        status: "model_not_found",
+        envKey: "GEMINI_API_KEY",
+        modelEnvKey: "GEMINI_MODEL",
+        configuredModel: GEMINI_MODEL,
+        canReadEnv: true,
+        canListModels: true,
+        canCallGenerateContent: false,
+        message: "Modelo Gemini não encontrado.",
+        recommendedAction: `Atualize a variável GEMINI_MODEL para um modelo disponível, como gemini-2.5-flash.`,
+        availableModels,
+        technicalDetails: { 
+          timestamp, 
+          errorCode: "MODEL_NOT_FOUND", 
+          errorMessage: `O modelo ${GEMINI_MODEL} não está disponível para esta chave de API.`
+        }
+      };
+    }
+
+    if (!foundModel.supportedGenerationMethods?.includes('generateContent')) {
+      return {
+        provider: "google_gemini",
+        status: "model_method_not_supported",
+        envKey: "GEMINI_API_KEY",
+        modelEnvKey: "GEMINI_MODEL",
+        configuredModel: GEMINI_MODEL,
+        canReadEnv: true,
+        canListModels: true,
+        canCallGenerateContent: false,
+        message: "Modelo não suporta geração de conteúdo.",
+        recommendedAction: "Escolha um modelo que possua generateContent em supportedGenerationMethods.",
+        availableModels,
+        technicalDetails: { timestamp, errorCode: "METHOD_NOT_SUPPORTED" }
+      };
+    }
+
+    // 5. Ping Test (Step 6)
+    try {
+      await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: "ping"
+      });
+      canCallGenerateContent = true;
+      status = "connected";
+      message = "Google Gemini configurado e respondendo.";
+      recommendedAction = "Nenhuma ação necessária.";
+    } catch (err: any) {
+      const errMsg = err?.message || String(err);
+      return {
+        provider: "google_gemini",
+        status: "unknown_error",
+        envKey: "GEMINI_API_KEY",
+        canReadEnv: true,
+        canListModels: true,
+        canCallGenerateContent: false,
+        message: "Erro ao realizar chamada de teste (ping).",
+        recommendedAction: "Verifique se o seu projeto possui quota disponível.",
+        technicalDetails: { timestamp, errorCode: "PING_FAILED", errorMessage: errMsg }
+      };
     }
 
     return {
-      provider: "gemini",
-      status: "error",
-      errorType,
-      message: error?.message || String(error),
-      ...assertGeminiConfigured()
+      provider: "google_gemini",
+      status,
+      envKey: "GEMINI_API_KEY",
+      modelEnvKey: "GEMINI_MODEL",
+      configuredModel: GEMINI_MODEL,
+      canReadEnv: true,
+      canListModels,
+      canCallGenerateContent,
+      message,
+      recommendedAction,
+      availableModels,
+      technicalDetails: { timestamp }
+    };
+
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error);
+    let errorCode = "UNKNOWN";
+
+    if (errorMsg.includes("API_KEY_SERVICE_BLOCKED") || errorMsg.includes("not enabled")) {
+      status = "api_disabled";
+      message = "API Generative Language não habilitada no Google Cloud.";
+      errorCode = "API_DISABLED";
+      recommendedAction = "Habilite a Generative Language API no console do Google Cloud.";
+    } else if (errorMsg.includes("fetch failed") || errorMsg.includes("ENOTFOUND")) {
+      status = "network_error";
+      message = "Falha de rede ao conectar com o Google.";
+      errorCode = "NETWORK_ERROR";
+      recommendedAction = "Verifique as configurações de rede e DNS do seu servidor.";
+    }
+
+    return {
+      provider: "google_gemini",
+      status,
+      envKey: config.keySource || "GEMINI_API_KEY",
+      canReadEnv: config.length > 0,
+      canListModels,
+      canCallGenerateContent,
+      message,
+      recommendedAction,
+      technicalDetails: { errorCode, errorMessage: errorMsg, timestamp }
     };
   }
+}
+
+/**
+ * Functional test for an API key before saving
+ */
+export async function testGeminiConnection(providedKey?: string) {
+  const result = await checkGeminiHealth(providedKey);
+  return {
+    success: result.status === "connected",
+    message: result.message,
+    timestamp: new Date().toISOString(),
+    details: result
+  };
 }

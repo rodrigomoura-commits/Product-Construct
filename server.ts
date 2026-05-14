@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getGeminiClient, checkGeminiHealth, assertGeminiConfigured } from "./src/server/geminiClient";
+import { getGeminiClient, checkGeminiHealth, assertGeminiConfigured, testGeminiConnection } from "./src/server/geminiClient";
 
 async function startServer() {
   const app = express();
@@ -29,7 +29,28 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // LLM Health Check (Admin Only in real app, but open for now)
+  // Integrations Health Check
+  app.get("/api/integrations/gemini/health", async (req, res) => {
+    try {
+      const health = await checkGeminiHealth();
+      res.json(health);
+    } catch (error: any) {
+      res.status(500).json({ status: "error", message: error.message });
+    }
+  });
+
+  // Test Connection Endpoint
+  app.post("/api/integrations/gemini/test", async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+      const result = await testGeminiConnection(apiKey);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // LLM Health Check (Legacy or internal shorthand)
   app.get("/api/admin/llm/health", async (req, res) => {
     try {
       const health = await checkGeminiHealth();
@@ -42,7 +63,8 @@ async function startServer() {
   // Gemini Proxy Agent (Specific to Mindflow)
   app.post("/api/mindflow/chat", async (req, res) => {
     try {
-      const { prompt, model = "gemini-1.5-flash", config = {} } = req.body;
+      const defaultModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+      const { prompt, model = defaultModel, config = {} } = req.body;
       
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
@@ -60,9 +82,25 @@ async function startServer() {
       res.json({ text: response.text() });
     } catch (error: any) {
       console.error("Gemini Proxy Error:", error);
+      
+      const config = assertGeminiConfigured();
+      const isInvalidKey = error.message?.includes("API key not valid");
+      
       res.status(500).json({ 
         error: error.message || "Internal Server Error",
-        type: error.message?.includes("API key not valid") ? "API_KEY_INVALID" : "LLM_PROVIDER_ERROR"
+        type: isInvalidKey ? "API_KEY_INVALID" : "LLM_PROVIDER_ERROR",
+        diagnostics: {
+          keySource: config.keySource,
+          keyPreview: config.keyPreview,
+          keyLength: config.length,
+          prefixOk: config.prefixOk,
+          isPlaceholder: config.isPlaceholder,
+          advice: config.isPlaceholder
+            ? `The environment variable ${config.keySource} is currently set to a placeholder value ("${config.keyPreview}"). Please open the Secrets panel in AI Studio, delete any existing GEMINI_API_KEY, and add a NEW secret named GEMINI_API_KEY with your real API key from https://aistudio.google.com/app/apikey.`
+            : isInvalidKey 
+              ? "The API key being used is reported as invalid by Google. If you are using 'AI Studio Free Tier' in the Secrets panel, try deleting it and creating a manual secret named GEMINI_API_KEY with your own key."
+              : "Please check your network connection and Gemini configuration."
+        }
       });
     }
   });

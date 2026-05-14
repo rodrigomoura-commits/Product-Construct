@@ -17,6 +17,7 @@ import {
 
 import { getUserMemoriesCollection } from './mindflowCollections';
 import { callGeminiProxy } from './geminiProxy';
+import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW COGNITIVE ARCHITECTURE (V2)
@@ -267,7 +268,7 @@ export async function extractMindflowLearning(params: {
 
   try {
     const responseText = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"

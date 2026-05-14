@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { promoteToBaseLearning } from '../../lib/mindflow';
 import { runDailyMindflowReasoning } from '../../lib/mindflowReasoning';
 import { toast } from 'react-hot-toast';
+import { GEMINI_MODEL } from '../../config/ai';
 import MindflowContextsSection from './MindflowContextsSection';
 import MindflowInteractionsSection from './MindflowInteractionsSection';
 import MindflowUsersSection from './MindflowUsersSection';
@@ -1037,7 +1038,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
                                      </div>
                                      <div>
                                         <p className="text-xl font-black text-zinc-900">Google Gemini</p>
-                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: gemini-1.5-flash</p>
+                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: {GEMINI_MODEL}</p>
                                      </div>
                                   </div>
                                   <div className={cn(

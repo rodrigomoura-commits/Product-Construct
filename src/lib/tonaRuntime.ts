@@ -24,6 +24,7 @@ import {
 } from './tonaPersonalityEngine';
 import { normalizeError } from './utils';
 import { getUserMemoriesCollection, getUserMemoryDoc } from './mindflowCollections';
+import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * TONA RUNTIME ORCHESTRATOR
@@ -190,7 +191,7 @@ export async function runTonaConversationTurn(params: {
     try {
       const responseText = await callGeminiProxy({
         prompt: prompt,
-        model: "gemini-1.5-flash",
+        model: GEMINI_MODEL,
         config: {
           responseMimeType: "application/json"
         }

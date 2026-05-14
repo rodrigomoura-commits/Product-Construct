@@ -10,6 +10,7 @@ import { db } from '../../../lib/firebase';
 import { collection, query, getDocs, limit, orderBy, where } from 'firebase/firestore';
 import { cn } from '../../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { GEMINI_MODEL } from '../../../config/ai';
 
 import { callGeminiProxy } from '../../../lib/geminiProxy';
 
@@ -80,7 +81,7 @@ export default function AgentTestsTab({ agents, selectedId, setSelectedId }: Pro
 
       // 2. Call Gemini
       const responseText = await callGeminiProxy({
-        model: "gemini-3-flash-preview",
+        model: GEMINI_MODEL,
         prompt: `System: ${systemInstruction}\n\nContexto do Produto: ${selectedProduct ? JSON.stringify(selectedProduct) : "Nenhum produto selecionado"}\n\nMensagem do Usuário: ${testInput}`,
         config: {
           temperature: 0.7
@@ -278,7 +279,7 @@ export default function AgentTestsTab({ agents, selectedId, setSelectedId }: Pro
                 </div>
                 <div className="flex gap-2 items-center">
                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-white/60 leading-none">Model: gemini-1.5-flash</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white/60 leading-none">Model: {GEMINI_MODEL}</span>
                 </div>
              </div>
              <div className="flex gap-4">

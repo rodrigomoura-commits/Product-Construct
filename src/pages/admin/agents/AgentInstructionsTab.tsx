@@ -10,6 +10,7 @@ import { db, auth } from '../../../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { cn } from '../../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
 
 import { callGeminiProxy } from '../../../lib/geminiProxy';
 
@@ -219,7 +220,7 @@ export default function AgentInstructionsTab({ agents, selectedId, setSelectedId
       Responda APENAS com o texto melhorado para esta seção específica.`;
 
       const improvedText = await callGeminiProxy({
-        model: "gemini-3-flash-preview",
+        model: GEMINI_MODEL,
         prompt: prompt
       });
       if (improvedText) {
@@ -425,10 +426,9 @@ export default function AgentInstructionsTab({ agents, selectedId, setSelectedId
                      onChange={(e) => selectedId && updateDoc(doc(db, 'agents', selectedId), { default_model: e.target.value })}
                      className="w-full p-3 bg-zinc-50 border border-zinc-100 rounded-xl text-xs font-bold font-mono"
                    >
-                      <option value="gemini-3-flash-preview">gemini-3-flash</option>
-                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro</option>
-                      <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                      <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                      {GEMINI_MODELS.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
                    </select>
                 </div>
 

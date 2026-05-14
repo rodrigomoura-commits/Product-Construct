@@ -3,6 +3,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc
 import { db, cleanFirestoreData } from './firebase';
 import { Artifact, Product, StageKey } from '../types';
 import { ARTIFACT_CATALOG, getArtifactDefinition } from './artifactCatalog';
+import { GEMINI_MODEL } from '../config/ai';
 
 // removal of direct AI instantiation
 
@@ -170,7 +171,7 @@ async function generateArtifactContent({
 
   const content = await callGeminiProxy({
     prompt: prompt,
-    model: "gemini-1.5-flash"
+    model: GEMINI_MODEL
   });
   
   return content || "";

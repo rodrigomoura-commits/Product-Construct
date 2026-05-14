@@ -16,8 +16,18 @@ export async function callGeminiProxy(params: {
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(JSON.stringify(errorData));
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      const errorData = await response.json();
+      throw new Error(JSON.stringify(errorData));
+    } else {
+      const errorText = await response.text();
+      throw new Error(JSON.stringify({
+        error: errorText.slice(0, 500),
+        status: response.status,
+        type: 'UNEXPECTED_SERVER_RESPONSE'
+      }));
+    }
   }
 
   const data = await response.json();

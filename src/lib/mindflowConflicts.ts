@@ -17,6 +17,7 @@ import {
   MindflowConflictStatus
 } from '../types';
 import { callGeminiProxy } from './geminiProxy';
+import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW CONFLICT DETECTION ENGINE (V2)
@@ -123,7 +124,7 @@ async function analyzeConflict(item: MindflowLearning, references: MindflowLearn
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -161,7 +162,7 @@ async function analyzeInternalConsistency(items: MindflowLearning[]): Promise<Pa
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -214,7 +215,7 @@ export async function groupMindflowConflicts() {
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
@@ -279,7 +280,7 @@ export async function summarizeConflictGroup(groupId: string) {
 
   try {
     const text = await callGeminiProxy({
-      model: "gemini-1.5-flash",
+      model: GEMINI_MODEL,
       prompt: prompt,
       config: {
         responseMimeType: "application/json"
