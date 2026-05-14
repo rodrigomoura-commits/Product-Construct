@@ -2,11 +2,19 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { getGeminiClient, checkGeminiHealth } from "./src/server/geminiClient";
+import { getGeminiClient, checkGeminiHealth, assertGeminiConfigured } from "./src/server/geminiClient";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  console.log("[Server] Checking Gemini configuration...");
+  const geminiStatus = assertGeminiConfigured();
+  if (geminiStatus.configured) {
+    console.log(`[Server] Gemini API Key found (${geminiStatus.keyPreview}), Prefix OK: ${geminiStatus.prefixOk}`);
+  } else {
+    console.warn("[Server] Gemini API Key is MISSING or INVALID");
+  }
 
   app.use(express.json());
 

@@ -6,16 +6,27 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
  */
 
 export function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  // Check multiple possible environment variable names used in different environments
+  const apiKey = 
+    process.env.GEMINI_API_KEY || 
+    process.env.VITE_GEMINI_API_KEY || 
+    process.env.GOOGLE_API_KEY || 
+    process.env.API_KEY || 
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
-  if (!apiKey || apiKey.trim().length < 5) {
-    const reason = !apiKey ? "Missing" : "Too short";
-    console.error(`CRITICAL: GEMINI_API_KEY is ${reason} in process.env (Length: ${apiKey?.length || 0})`);
-    throw new Error(`GEMINI_API_KEY is ${reason.toLowerCase()} or invalid in server environment. Please configure it in the AI Studio UI Secrets panel.`);
+  if (!apiKey || apiKey.trim().length < 5 || apiKey === 'undefined' || apiKey === 'null') {
+    const reason = !apiKey ? "Missing" : (apiKey.length < 5 ? "Too short" : "Placeholder string ('undefined'/'null')");
+    console.error(`CRITICAL: Gemini API Key is ${reason} in process.env`);
+    throw new Error(`Gemini API Key is ${reason.toLowerCase()} or invalid. Please configure GEMINI_API_KEY in the Secrets panel.`);
   }
 
-  const trimmed = apiKey.trim();
-  console.log(`[GeminiClient] Using API Key: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)} (Length: ${trimmed.length})`);
+  // Remove potential quotes if user accidentally wrapped the secret
+  let trimmed = apiKey.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    trimmed = trimmed.slice(1, -1);
+  }
+
+  console.log(`[GeminiClient] Initializing with key: ${trimmed.slice(0, 4)}...${trimmed.slice(-4)} (Length: ${trimmed.length}, Prefix: ${trimmed.startsWith('AIza') ? 'OK' : 'INVALID'})`);
 
   return new GoogleGenerativeAI(trimmed);
 }
@@ -24,14 +35,22 @@ export function getGeminiClient() {
  * Asserts if Gemini is properly configured without exposing the full key.
  */
 export function assertGeminiConfigured() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = 
+    process.env.GEMINI_API_KEY || 
+    process.env.VITE_GEMINI_API_KEY || 
+    process.env.GOOGLE_API_KEY || 
+    process.env.API_KEY;
+
+  const validStr = apiKey && apiKey !== 'undefined' && apiKey !== 'null';
+  const trimmed = validStr ? apiKey.trim() : null;
 
   return {
-    configured: Boolean(apiKey && apiKey.trim().length >= 5),
-    keyPreview: apiKey
-      ? `${apiKey.trim().slice(0, 4)}...${apiKey.trim().slice(-4)}`
+    configured: Boolean(trimmed && trimmed.length >= 5),
+    keyPreview: trimmed
+      ? `${trimmed.slice(0, 4)}...${trimmed.slice(-4)}`
       : null,
-    length: apiKey ? apiKey.trim().length : 0
+    length: trimmed ? trimmed.length : 0,
+    prefixOk: trimmed ? trimmed.startsWith('AIza') : false
   };
 }
 

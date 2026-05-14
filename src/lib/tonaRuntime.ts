@@ -71,13 +71,6 @@ export async function runTonaConversationTurn(params: {
   let currentStep = 'initialization';
 
   try {
-    // 0. Environment & Input Validation
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is not configured in the environment.');
-    }
-    if (!userId) throw new Error('userId is required for MindFlow turn.');
-    if (!userMessage) throw new Error('userMessage is required for MindFlow turn.');
-
     currentStep = 'seeding_personality';
     // Ensure personality is seeded
     await ensureTonaPersonalitySeed({ uid: userId, email: userEmail || '' });

@@ -243,8 +243,6 @@ export async function extractMindflowLearning(params: {
 }) {
   const { userId, productId, stageId, agentId, conversationId, userMessage, assistantResponse } = params;
 
-  if (!process.env.GEMINI_API_KEY) return;
-
   const prompt = `
     Analise a interação entre o usuário e a Tona (IA).
     Extraia CONCLUSÕES e APRENDIZADOS que devem ser consolidados.
