@@ -6,18 +6,20 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
  */
 
 export function getGeminiClient() {
-  // Check multiple possible environment variable names used in different environments
-  const apiKey = 
-    process.env.GEMINI_API_KEY || 
-    process.env.VITE_GEMINI_API_KEY || 
-    process.env.GOOGLE_API_KEY || 
-    process.env.API_KEY || 
-    process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+  const keys = [
+    process.env.GEMINI_API_KEY,
+    process.env.VITE_GEMINI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+    process.env.API_KEY,
+    process.env.NEXT_PUBLIC_GEMINI_API_KEY
+  ];
 
-  if (!apiKey || apiKey.trim().length < 5 || apiKey === 'undefined' || apiKey === 'null') {
-    const reason = !apiKey ? "Missing" : (apiKey.length < 5 ? "Too short" : "Placeholder string ('undefined'/'null')");
-    console.error(`CRITICAL: Gemini API Key is ${reason} in process.env`);
-    throw new Error(`Gemini API Key is ${reason.toLowerCase()} or invalid. Please configure GEMINI_API_KEY in the Secrets panel.`);
+  // Find the first key that is not empty and not a placeholder string
+  let apiKey = keys.find(k => k && k.trim().length >= 5 && k !== 'undefined' && k !== 'null');
+
+  if (!apiKey) {
+    console.error("CRITICAL: No valid Gemini API Key found in environment variables.");
+    throw new Error("Gemini API Key is missing or invalid. Please configure GEMINI_API_KEY in the Secrets panel.");
   }
 
   // Remove potential quotes if user accidentally wrapped the secret
@@ -35,14 +37,15 @@ export function getGeminiClient() {
  * Asserts if Gemini is properly configured without exposing the full key.
  */
 export function assertGeminiConfigured() {
-  const apiKey = 
-    process.env.GEMINI_API_KEY || 
-    process.env.VITE_GEMINI_API_KEY || 
-    process.env.GOOGLE_API_KEY || 
-    process.env.API_KEY;
+  const keys = [
+    process.env.GEMINI_API_KEY,
+    process.env.VITE_GEMINI_API_KEY,
+    process.env.GOOGLE_API_KEY,
+    process.env.API_KEY
+  ];
 
-  const validStr = apiKey && apiKey !== 'undefined' && apiKey !== 'null';
-  const trimmed = validStr ? apiKey.trim() : null;
+  const apiKey = keys.find(k => k && k.trim().length >= 5 && k !== 'undefined' && k !== 'null');
+  const trimmed = apiKey ? apiKey.trim() : null;
 
   return {
     configured: Boolean(trimmed && trimmed.length >= 5),
