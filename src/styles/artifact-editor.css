@@ -1,0 +1,121 @@
+.artifact-editor .ProseMirror {
+  min-height: 680px;
+  outline: none;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #0f172a;
+}
+
+.artifact-editor .ProseMirror h1 {
+  font-size: 2rem;
+  line-height: 2.4rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  margin: 2rem 0 1rem;
+  color: #020617;
+}
+
+.artifact-editor .ProseMirror h2 {
+  font-size: 1.35rem;
+  line-height: 1.9rem;
+  font-weight: 800;
+  margin: 1.8rem 0 0.8rem;
+  color: #0f172a;
+}
+
+.artifact-editor .ProseMirror h3 {
+  font-size: 1.05rem;
+  line-height: 1.6rem;
+  font-weight: 800;
+  margin: 1.4rem 0 0.6rem;
+  color: #1e293b;
+}
+
+.artifact-editor .ProseMirror p {
+  margin: 0.75rem 0;
+}
+
+.artifact-editor .ProseMirror ul,
+.artifact-editor .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.8rem 0;
+}
+
+.artifact-editor .ProseMirror li {
+  margin: 0.35rem 0;
+}
+
+.artifact-editor .ProseMirror blockquote {
+  border-left: 4px solid #8b5cf6;
+  background: #f5f3ff;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  color: #4c1d95;
+}
+
+.artifact-editor .ProseMirror code {
+  background: #f1f5f9;
+  color: #334155;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.9em;
+}
+
+.artifact-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.artifact-editor .ProseMirror th,
+.artifact-editor .ProseMirror td {
+  border: 1px solid #e2e8f0;
+  padding: 0.6rem;
+}
+
+.artifact-editor .ProseMirror th {
+  background: #f8fafc;
+  font-weight: 800;
+}
+
+.smart-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.smart-badge-fact {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+}
+
+.smart-badge-hypothesis {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.smart-badge-evidence {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+
+.smart-badge-decision {
+  background: #ede9fe !important;
+  color: #5b21b6 !important;
+}
+
+.smart-badge-risk {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+
+.smart-badge-gap {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}

@@ -1,0 +1,743 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "User Profile",
+      "description": "Standard user profile information.",
+      "type": "object",
+      "properties": {
+        "display_name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "avatar_url": { "type": "string", "format": "uri" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["display_name", "email"]
+    },
+    "UserRole": {
+      "title": "User Role",
+      "description": "Role-based access control for users.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "admin", "editor", "viewer"] },
+        "granted_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "role"]
+    },
+    "Product": {
+      "title": "Product Workspace",
+      "description": "A workspace for a specific product being constructed.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "product_type": { "type": "string" },
+        "objective": { "type": "string" },
+        "owner_id": { "type": "string" },
+        "organization_id": { "type": "string" },
+        "area": { "type": "string" },
+        "team": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "archived", "completed"] },
+        "current_stage": { "type": "string" },
+        "progress": { "type": "number" },
+        "quality_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "owner_id"]
+    },
+    "ProductStage": {
+      "title": "Product Stage",
+      "description": "One of the 6 stages of product construction.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_key": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["not_started", "in_progress", "incomplete", "ready_for_review", "approved", "reopened"] },
+        "progress": { "type": "number" },
+        "quality_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "stage_key", "status"]
+    },
+    "StageField": {
+      "title": "Stage Field",
+      "description": "A specific data point within a product stage.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_key": { "type": "string" },
+        "field_key": { "type": "string" },
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "classification": { "type": "string", "enum": ["fact", "hypothesis", "evidence", "decision", "risk", "pending"] },
+        "quality_status": { "type": "string", "enum": ["empty", "draft", "sufficient", "strong", "needs_review"] },
+        "quality_reason": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "stage_key", "field_key"]
+    },
+    "Artifact": {
+      "title": "Product Artifact",
+      "description": "A versioned document generated during the product journey.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "version": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "pending", "approved", "rejected"] },
+        "content": { "type": "string" },
+        "source_data": { "type": "object" },
+        "created_by": { "type": "string" },
+        "approved_by": { "type": "string" },
+        "approved_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "type", "title", "version"]
+    },
+    "Decision": {
+      "title": "Product Decision",
+      "description": "A decision made regarding the product strategy or execution.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "reason": { "type": "string" },
+        "evidence": { "type": "string" },
+        "impact": { "type": "string" },
+        "status": { "type": "string", "enum": ["proposed", "in_discussion", "approved", "reverted", "obsolete"] },
+        "author_id": { "type": "string" },
+        "previous_decision_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "title", "author_id", "status"]
+    },
+    "Memory": {
+      "title": "Generative Memory",
+      "description": "Stored context and learning for the product or organization.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "type": { "type": "string", "enum": ["base", "learned", "decision", "evidence", "style", "gap", "risk", "rule", "template", "instruction"] },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "pending", "approved", "rejected", "archived", "obsolete", "conflict"] },
+        "can_ai_use": { "type": "boolean" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "version": { "type": "string" },
+        "previous_version_id": { "type": "string" }
+      },
+      "required": ["type", "title", "content", "status"]
+    },
+    "Document": {
+      "title": "Uploaded Document",
+      "description": "Files uploaded and processed by the system.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "title": { "type": "string" },
+        "file_url": { "type": "string", "format": "uri" },
+        "file_type": { "type": "string" },
+        "processing_status": { "type": "string", "enum": ["pending", "processing", "processed", "error"] },
+        "extracted_content": { "type": "string" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "title", "file_url"]
+    },
+    "HistoryEvent": {
+      "title": "History Event",
+      "description": "A log entries for activity tracking.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "event_type": { "type": "string" },
+        "description": { "type": "string" },
+        "actor_id": { "type": "string" },
+        "metadata": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["event_type", "description", "created_at"]
+    },
+    "ConversationMemory": {
+      "title": "Conversation Memory",
+      "description": "State of the AI assistant conversation.",
+      "type": "object",
+      "properties": {
+        "product_id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "active_stage_key": { "type": "string" },
+        "conversation_summary": { "type": "string" },
+        "last_assistant_message": { "type": "string" },
+        "last_user_message": { "type": "string" },
+        "last_question_asked": { "type": "string" },
+        "last_question_type": { "type": "string" },
+        "last_options_presented": { "type": "array" },
+        "selected_options": { "type": "array", "items": { "type": "string" } },
+        "pending_question": { "type": "string" },
+        "pending_answer_expected": { "type": "string" },
+        "current_intent": { "type": "string" },
+        "current_reasoning_thread": { "type": "string" },
+        "next_best_action": { "type": "string" },
+        "unresolved_gaps": { "type": "array", "items": { "type": "string" } },
+        "open_hypotheses": { "type": "array", "items": { "type": "string" } },
+        "last_artifact_suggestion": { "type": "string" },
+        "last_maturity_snapshot": { "type": "object" },
+        "status": { "type": "string", "enum": ["active", "paused", "resolved", "archived"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["product_id", "user_id", "status"]
+    },
+    "Agent": {
+      "title": "AI Agent",
+      "description": "Definition of an AI agent and its configuration.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "draft", "retired"] },
+        "default_model": { "type": "string" },
+        "mindflow_enabled": { "type": "boolean" },
+        "learned_memory_enabled": { "type": "boolean" },
+        "retrieval_strategy": { "type": "string" },
+        "primary_stage_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "status"]
+    },
+    "MindflowLearning": {
+      "title": "Mindflow Learning",
+      "description": "Consolidated knowledge learned by Tona from memories, documents, or admin input.",
+      "type": "object",
+      "properties": {
+        "learning_date": { "type": "string", "format": "date" },
+        "learning_type": { "type": "string", "enum": ["Base", "Adquirida"] },
+        "theme": { "type": "string" },
+        "sub_theme": { "type": "string" },
+        "title": { "type": "string" },
+        "learning": { "type": "string" },
+        "summary": { "type": "string" },
+        "classification": { "type": "string", "enum": ["fato", "hipótese", "evidência", "decisão", "risco", "pendência", "preferência", "aprendizado", "instrução", "artefato", "contexto", "regra", "exemplo", "comportamento"] },
+        "source_type": { "type": "string" },
+        "source_id": { "type": "string" },
+        "source_reference": { "type": "string" },
+        "scope_type": { "type": "string", "enum": ["global", "user", "product", "stage", "agent", "artifact", "conversation"] },
+        "user_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "artifact_id": { "type": "string" },
+        "conversation_id": { "type": "string" },
+        "context_id": { "type": "string" },
+        "source_user_memory_ids": { "type": "array", "items": { "type": "string" } },
+        "confidence_score": { "type": "number" },
+        "relevance_score": { "type": "number" },
+        "quality_score": { "type": "number" },
+        "usage_count": { "type": "integer" },
+        "last_used_at": { "type": "string", "format": "date-time" },
+        "is_verified": { "type": "boolean" },
+        "needs_review": { "type": "boolean" },
+        "is_active": { "type": "boolean" },
+        "is_promoted_to_base": { "type": "boolean" },
+        "promoted_from_learning_id": { "type": "string" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" },
+        "embedding": { "type": "array", "items": { "type": "number" } }
+      },
+      "required": ["learning_type", "theme", "learning", "classification"]
+    },
+    "MindflowLearningRelationship": {
+      "title": "Mindflow Learning Relationship",
+      "description": "Links between learnings to form a knowledge graph.",
+      "type": "object",
+      "properties": {
+        "source_learning_id": { "type": "string" },
+        "target_learning_id": { "type": "string" },
+        "relationship_type": { "type": "string" },
+        "strength": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["source_learning_id", "target_learning_id", "relationship_type"]
+    },
+    "MindflowLearningCandidate": {
+      "title": "Mindflow Learning Candidate",
+      "description": "Potential knowledge extracted from user memories, awaiting review.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "source_user_memory_ids": { "type": "array", "items": { "type": "string" } },
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "context_id": { "type": "string" },
+        "source_type": { "type": "string" },
+        "raw_input": { "type": "string" },
+        "tona_response": { "type": "string" },
+        "extracted_learning": { "type": "string" },
+        "suggested_theme": { "type": "string" },
+        "suggested_sub_theme": { "type": "string" },
+        "suggested_classification": { "type": "string" },
+        "confidence_score": { "type": "number" },
+        "should_save": { "type": "boolean" },
+        "saved_learning_id": { "type": "string" },
+        "review_status": { "type": "string", "enum": ["pending", "approved", "rejected", "auto_saved", "ignored"] },
+        "reviewed_by": { "type": "string" },
+        "reviewed_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["source_type", "extracted_learning"]
+    },
+    "MindflowRetrievalLog": {
+      "title": "Mindflow Retrieval Log",
+      "description": "Tracking which learnings and reasonings were used in a turn.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "query_text": { "type": "string" },
+        "retrieval_strategy": { "type": "string" },
+        "learnings_retrieved": { "type": "array" },
+        "learnings_used": { "type": "array" },
+        "reasonings_retrieved": { "type": "array" },
+        "reasonings_used": { "type": "array" },
+        "response_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["query_text", "retrieval_strategy"]
+    },
+    "MindflowReasoning": {
+      "title": "Mindflow Deep Reasoning",
+      "description": "Structured conclusions generated from crossing multiple learnings.",
+      "type": "object",
+      "properties": {
+        "reasoning_date": { "type": "string", "format": "date" },
+        "reasoning_type": { "type": "string" },
+        "inference_type": { "type": "string" },
+        "title": { "type": "string" },
+        "reasoning": { "type": "string" },
+        "summary": { "type": "string" },
+        "why_it_matters": { "type": "string" },
+        "theme": { "type": "string" },
+        "sub_theme": { "type": "string" },
+        "classification": { "type": "string" },
+        "priority": { "type": "string" },
+        "scope_type": { "type": "string" },
+        "user_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "context_id": { "type": "string" },
+        "source_learning_ids": { "type": "array", "items": { "type": "string" } },
+        "base_learning_ids": { "type": "array", "items": { "type": "string" } },
+        "acquired_learning_ids": { "type": "array", "items": { "type": "string" } },
+        "supporting_user_memory_ids": { "type": "array", "items": { "type": "string" } },
+        "source_context_ids": { "type": "array", "items": { "type": "string" } },
+        "conclusion_depth": { "type": "string" },
+        "abstraction_level": { "type": "string" },
+        "applicability_rules": { "type": "object" },
+        "transfer_contexts": { "type": "array" },
+        "recommended_actions": { "type": "array" },
+        "risks_if_ignored": { "type": "array" },
+        "reasoning_chain": { "type": "array" },
+        "confidence_score": { "type": "number" },
+        "quality_score": { "type": "number" },
+        "base_alignment_score": { "type": "number" },
+        "contradiction_score": { "type": "number" },
+        "usage_count": { "type": "integer" },
+        "last_used_at": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" },
+        "needs_review": { "type": "boolean" },
+        "is_active": { "type": "boolean" },
+        "generated_by": { "type": "string" },
+        "reviewed_by": { "type": "string" },
+        "reviewed_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" },
+        "embedding": { "type": "array", "items": { "type": "number" } }
+      },
+      "required": ["reasoning_type", "title", "reasoning", "theme", "status"]
+    },
+    "MindflowUserMemory": {
+      "title": "Mindflow User Memory",
+      "description": "Historical record of every interaction between a specific user and Tona.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "user_identifier": { "type": "string" },
+        "memory_date": { "type": "string", "format": "date" },
+        "memory_time": { "type": "string" },
+        "product": { "type": "string" },
+        "context": { "type": "string" },
+        "sub_context": { "type": "string" },
+        "user_message": { "type": "string" },
+        "tona_response": { "type": "string" },
+        "conversation_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "agent_id": { "type": "string" },
+        "context_id": { "type": "string" },
+        "used_learning_ids": { "type": "array", "items": { "type": "string" } },
+        "used_reasoning_ids": { "type": "array", "items": { "type": "string" } },
+        "generated_learning_ids": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["user_id", "memory_date", "user_message"]
+    },
+    "MindflowMemoryLearningLink": {
+      "title": "Memory-Learning Link",
+      "type": "object",
+      "properties": {
+        "user_memory_id": { "type": "string" },
+        "learning_id": { "type": "string" },
+        "relationship_type": { "type": "string" },
+        "confidence_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MindflowLearningReasoningLink": {
+      "title": "Learning-Reasoning Link",
+      "type": "object",
+      "properties": {
+        "learning_id": { "type": "string" },
+        "reasoning_id": { "type": "string" },
+        "learning_role": { "type": "string" },
+        "contribution_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MindflowImportJob": {
+      "title": "Mindflow Import Job",
+      "description": "Represents a CSV import process.",
+      "type": "object",
+      "properties": {
+        "import_type": { "type": "string", "enum": ["learnings_csv", "user_memories_csv", "contexts_csv"] },
+        "file_name": { "type": "string" },
+        "file_size_bytes": { "type": "integer" },
+        "status": { "type": "string", "enum": ["processing", "completed", "completed_with_warnings", "failed", "cancelled"] },
+        "progress": { "type": "number" },
+        "current_step": { "type": "string" },
+        "current_message": { "type": "string" },
+        "total_rows": { "type": "integer" },
+        "valid_rows": { "type": "integer" },
+        "imported_rows": { "type": "integer" },
+        "skipped_rows": { "type": "integer" },
+        "error_rows": { "type": "integer" },
+        "duplicate_rows": { "type": "integer" },
+        "base_rows": { "type": "integer" },
+        "acquired_rows": { "type": "integer" },
+        "reasoning_candidates_generated": { "type": "integer" },
+        "reasonings_created": { "type": "integer" },
+        "reasonings_activated": { "type": "integer" },
+        "reasonings_pending_review": { "type": "integer" },
+        "reasonings_rejected_as_shallow": { "type": "integer" },
+        "reasonings_blocked_by_base_conflict": { "type": "integer" },
+        "conflicts_detected": { "type": "integer" },
+        "conflict_groups_created": { "type": "integer" },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["import_type", "status", "created_by"]
+    },
+    "MindflowImportJobEvent": {
+      "title": "Mindflow Import Job Event",
+      "description": "Streaming event for an import job.",
+      "type": "object",
+      "properties": {
+        "import_job_id": { "type": "string" },
+        "event_order": { "type": "integer" },
+        "event_type": { "type": "string", "enum": ["info", "success", "warning", "error", "reasoning", "conflict", "system"] },
+        "step": { "type": "string" },
+        "message": { "type": "string" },
+        "progress": { "type": "number" },
+        "metadata": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["import_job_id", "event_type", "step", "message"]
+    },
+    "MindflowBehavioralProfile": {
+      "title": "Behavioral Profile",
+      "description": "User interaction patterns and preferences.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "preferred_depth": { "type": "string", "enum": ["short", "balanced", "detailed", "exhaustive"] },
+        "preferred_format": { "type": "string" },
+        "confidence_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "preferred_depth"]
+    },
+    "MindflowBehavioralSignal": {
+      "title": "Behavioral Signal",
+      "description": "A single piece of evidence for a behavioral pattern.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "signal_type": { "type": "string" },
+        "signal_value": { "type": "string" },
+        "confidence_score": { "type": "number" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "signal_type", "signal_value"]
+    },
+    "MindflowCognitiveTrace": {
+      "title": "Cognitive Trace",
+      "description": "Tracking the thought process for a single interaction.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "detected_context": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "created_at"]
+    },
+    "MindflowCognitiveTraceEvent": {
+      "title": "Cognitive Trace Event",
+      "description": "A specific step in the cognitive trace timeline.",
+      "type": "object",
+      "properties": {
+        "trace_id": { "type": "string" },
+        "event_type": { "type": "string" },
+        "title": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["trace_id", "event_type", "title"]
+    },
+    "TonaPersonalityBase": {
+      "title": "Tona Base Personality",
+      "description": "The official identity, mission and principles of Tona.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "archetype": { "type": "string" },
+        "core_mission": { "type": "string" },
+        "personality_traits": { "type": "object" },
+        "voice_principles": { "type": "array", "items": { "type": "string" } },
+        "product_principles": { "type": "array", "items": { "type": "string" } },
+        "response_style": { "type": "object" },
+        "forbidden_behaviors": { "type": "array", "items": { "type": "string" } },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "archetype", "core_mission"]
+    },
+    "TonaUserPersonality": {
+      "title": "Tona User Personality",
+      "description": "Individually adapted personality for a specific user.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "user_email": { "type": "string" },
+        "communication_style": { "type": "object" },
+        "vocabulary_profile": { "type": "object" },
+        "formatting_preferences": { "type": "object" },
+        "product_work_preferences": { "type": "object" },
+        "learned_patterns": { "type": "object" },
+        "adaptation_rules": { "type": "array" },
+        "confidence": { "type": "object" },
+        "privacy": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id"]
+    },
+    "TonaPersonalityLearningEvent": {
+      "title": "Tona Personality Learning Event",
+      "description": "A signal extracted from interaction to refine personality.",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "source": { "type": "string", "enum": ["chat", "feedback", "manual_admin", "implicit_pattern"] },
+        "event_type": { "type": "string" },
+        "observed_text_sample": { "type": "string" },
+        "extracted_signal": { "type": "object" },
+        "confidence": { "type": "number" },
+        "should_apply": { "type": "boolean" },
+        "reviewed_by_user": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["user_id", "source", "event_type"]
+    }
+  },
+  "firestore": {
+    "profiles/{userId}": {
+      "schema": "Profile",
+      "description": "User profiles."
+    },
+    "user_roles/{roleId}": {
+      "schema": "UserRole",
+      "description": "RBAC mapping."
+    },
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Product workspaces."
+    },
+    "products/{productId}/stages/{stageId}": {
+      "schema": "ProductStage",
+      "description": "Stages within a product."
+    },
+    "products/{productId}/fields/{fieldId}": {
+      "schema": "StageField",
+      "description": "Fields within a product journey."
+    },
+    "products/{productId}/artifacts/{artifactId}": {
+      "schema": "Artifact",
+      "description": "Product artifacts."
+    },
+    "products/{productId}/decisions/{decisionId}": {
+      "schema": "Decision",
+      "description": "Product decisions."
+    },
+    "products/{productId}/memories/{memoryId}": {
+      "schema": "Memory",
+      "description": "Product specific memories."
+    },
+    "products/{productId}/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Product documents."
+    },
+    "products/{productId}/history/{eventId}": {
+      "schema": "HistoryEvent",
+      "description": "Product history events."
+    },
+    "products/{productId}/conversation_memory/{userId}": {
+      "schema": "ConversationMemory",
+      "description": "Conversation state for the product."
+    },
+    "memories/{memoryId}": {
+      "schema": "Memory",
+      "description": "Global/Shared memories."
+    },
+    "agents/{agentId}": {
+      "schema": "Agent",
+      "description": "Global AI agents."
+    },
+    "mindflow_learnings/{learningId}": {
+      "schema": "MindflowLearning",
+      "description": "Mindflow learnings (Base and Acquired)."
+    },
+    "mindflow_learning_relationships/{relId}": {
+      "schema": "MindflowLearningRelationship",
+      "description": "Relationships between learnings."
+    },
+    "mindflow_learning_candidates/{candidateId}": {
+      "schema": "MindflowLearningCandidate",
+      "description": "Learning extraction candidates."
+    },
+    "mindflow_retrieval_logs/{logId}": {
+      "schema": "MindflowRetrievalLog",
+      "description": "Logs of knowledge usage."
+    },
+    "mindflow_reasonings/{reasoningId}": {
+      "schema": "MindflowReasoning",
+      "description": "Deep cognitive conclusions."
+    },
+    "mindflow_memory_learning_links/{linkId}": {
+      "schema": "MindflowMemoryLearningLink",
+      "description": "Traceability from user memory to learning."
+    },
+    "mindflow_learning_reasoning_links/{linkId}": {
+      "schema": "MindflowLearningReasoningLink",
+      "description": "Traceability from learning to reasoning."
+    },
+    "mindflow_reasoning_runs/{runId}": {
+      "schema": "MindflowReasoningRun",
+      "description": "Periodic reasoning job logs."
+    },
+    "mindflow_contexts/{contextId}": {
+      "schema": "MindflowContext",
+      "description": "Mindflow classification contexts."
+    },
+    "mindflow_user_memories/{memoryId}": {
+      "schema": "MindflowUserMemory",
+      "description": "Historical records of user interactions."
+    },
+    "mindflow_runtime_logs/{logId}": {
+      "schema": "MindflowRuntimeLog",
+      "description": "Prompt snapshots for audit."
+    },
+    "mindflow_conflicts/{conflictId}": {
+      "schema": "MindflowConflict",
+      "description": "Detected conflicts between memory units."
+    },
+    "mindflow_conflict_groups/{groupId}": {
+      "schema": "MindflowConflictGroup",
+      "description": "Groups of related conflicts."
+    },
+    "mindflow_conflict_resolution_logs/{logId}": {
+      "schema": "MindflowConflictResolutionLog",
+      "description": "Resolution historical data."
+    },
+    "mindflow_import_jobs/{jobId}": {
+      "schema": "MindflowImportJob",
+      "description": "History of CSV import jobs."
+    },
+    "mindflow_behavioral_profiles/{profileId}": {
+      "schema": "MindflowBehavioralProfile",
+      "description": "User behavioral preferences."
+    },
+    "mindflow_behavioral_signals/{signalId}": {
+      "schema": "MindflowBehavioralSignal",
+      "description": "Evidence for behavioral patterns."
+    },
+    "mindflow_cognitive_traces/{traceId}": {
+      "schema": "MindflowCognitiveTrace",
+      "description": "Audit trail for Tona's thought process."
+    },
+    "mindflow_cognitive_trace_events/{eventId}": {
+      "schema": "MindflowCognitiveTraceEvent",
+      "description": "Timeline events for cognitive traces."
+    },
+    "mindflow_import_job_events/{eventId}": {
+      "schema": "MindflowImportJobEvent",
+      "description": "Streaming events for import jobs."
+    },
+    "tona_personality_base/{personalityId}": {
+      "schema": "TonaPersonalityBase",
+      "description": "Global Tona identity configurations."
+    },
+    "tona_user_personalities/{userId}": {
+      "schema": "TonaUserPersonality",
+      "description": "User-specific adaptation profiles."
+    },
+    "tona_personality_learning_events/{eventId}": {
+      "schema": "TonaPersonalityLearningEvent",
+      "description": "Style detection and personality learning signals."
+    }
+  }
+}
