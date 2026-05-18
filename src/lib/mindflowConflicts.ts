@@ -1,10 +1,6 @@
-import { 
-  collection, query, where, getDocs, addDoc, 
-  serverTimestamp, doc, updateDoc, orderBy, 
-  limit, writeBatch, Timestamp, deleteDoc,
-  getDoc
-} from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, Timestamp, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
+import { safeText } from './safeText';
 import { 
   MindflowLearning, 
   MindflowReasoning, 
@@ -17,7 +13,6 @@ import {
   MindflowConflictStatus
 } from '../types';
 import { callGeminiProxy } from './geminiProxy';
-import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW CONFLICT DETECTION ENGINE (V2)
@@ -34,15 +29,39 @@ export async function detectMindflowConflicts(onProgress?: (progress: number) =>
       where('is_active', '==', true),
       limit(200)
     ));
-    const baseLearnings = baseSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning));
+    const baseLearnings = baseSnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        learning: safeText(raw.learning),
+        theme: safeText(raw.theme)
+      } as MindflowLearning;
+    });
     
     if (onProgress) onProgress(10);
     const acquiredSnap = await getDocs(query(collection(db, 'mindflow_learnings'), where('learning_type', '==', 'Adquirida'), where('is_active', '==', true), limit(500)));
-    const acquiredLearnings = acquiredSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning));
+    const acquiredLearnings = acquiredSnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        learning: safeText(raw.learning),
+        theme: safeText(raw.theme)
+      } as MindflowLearning;
+    });
 
     if (onProgress) onProgress(15);
     const reasoningSnap = await getDocs(query(collection(db, 'mindflow_reasonings'), where('is_active', '==', true), limit(200)));
-    const reasonings = reasoningSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowReasoning));
+    const reasonings = reasoningSnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        reasoning: safeText(raw.reasoning),
+        theme: safeText(raw.theme)
+      } as MindflowReasoning;
+    });
 
     if (onProgress) onProgress(20);
     const detectionPayload = { conflicts_detected: 0, groups_created: 0, critical_conflicts: 0 };
@@ -100,7 +119,7 @@ export async function detectMindflowConflicts(onProgress?: (progress: number) =>
     if (onProgress) onProgress(100);
     return detectionPayload;
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'mindflow_detection');
+    console.error("[MindflowConflicts] Isolation/Detection error:", error);
     throw error;
   }
 }
@@ -124,8 +143,9 @@ async function analyzeConflict(item: MindflowLearning, references: MindflowLearn
 
   try {
     const text = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "analysis",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -136,9 +156,9 @@ async function analyzeConflict(item: MindflowLearning, references: MindflowLearn
 
     return {
       conflict_type: type,
-      title: data.title,
-      summary: data.summary,
-      conflict_reason: data.reason,
+      title: safeText(data.title),
+      summary: safeText(data.summary),
+      conflict_reason: safeText(data.reason),
       impact_description: "Divergência entre diretriz base e aprendizado empírico.",
       severity: data.severity as any,
       status: 'open',
@@ -162,8 +182,9 @@ async function analyzeInternalConsistency(items: MindflowLearning[]): Promise<Pa
 
   try {
     const text = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "analysis",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -174,9 +195,9 @@ async function analyzeInternalConsistency(items: MindflowLearning[]): Promise<Pa
 
     return data.conflicts.map((c: any) => ({
       conflict_type: 'acquired_vs_acquired',
-      title: c.title,
-      summary: c.summary,
-      conflict_reason: c.reason,
+      title: safeText(c.title),
+      summary: safeText(c.summary),
+      conflict_reason: safeText(c.reason),
       severity: c.severity || 'medium',
       status: 'open',
       priority: c.severity || 'medium',
@@ -215,8 +236,9 @@ export async function groupMindflowConflicts() {
 
   try {
     const text = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "analysis",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -227,9 +249,9 @@ export async function groupMindflowConflicts() {
 
     for (const g of (data.groups || [])) {
       const groupPayload: Omit<MindflowConflictGroup, 'id'> = {
-        title: g.title,
-        summary: g.summary,
-        group_reason: g.reason,
+        title: safeText(g.title),
+        summary: safeText(g.summary),
+        group_reason: safeText(g.reason),
         main_conflict_type: 'cognitive_friction',
         scope_type: 'global',
         severity: g.severity || 'medium',
@@ -280,8 +302,9 @@ export async function summarizeConflictGroup(groupId: string) {
 
   try {
     const text = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "analysis",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -289,10 +312,14 @@ export async function summarizeConflictGroup(groupId: string) {
 
     const data = JSON.parse(text || '{}');
     await updateDoc(doc(db, 'mindflow_conflict_groups', groupId), {
-      summary: data.executive_summary,
-      group_reason: data.detailed_reason,
-      recommended_resolution: data.recommended_resolution,
-      suggested_actions: data.actions || [],
+      summary: safeText(data.executive_summary),
+      group_reason: safeText(data.detailed_reason),
+      recommended_resolution: safeText(data.recommended_resolution),
+      suggested_actions: (data.actions || []).map((a: any) => ({
+        ...a,
+        label: safeText(a.label),
+        description: safeText(a.description)
+      })),
       updated_at: serverTimestamp()
     });
   } catch (e) { console.error(e); }

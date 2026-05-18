@@ -5,7 +5,7 @@ import {
   Table as TableIcon, Hash, Type, Link2, Eye, Lock,
   CheckCircle2, Download
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 interface DatabaseTableDetailDrawerProps {

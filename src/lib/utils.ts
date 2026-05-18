@@ -5,6 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function truncateText(text: string, maxLength: number) {
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}...`;
+}
+
+export function cleanFirestoreData(data: any): any {
+  if (data === undefined) return null;
+  if (data instanceof Date) return data;
+  if (Array.isArray(data)) return data.map(cleanFirestoreData);
+  if (typeof data === 'object' && data !== null) {
+    const cleaned: any = {};
+    Object.keys(data).forEach(key => {
+      if (data[key] !== undefined) {
+        cleaned[key] = cleanFirestoreData(data[key]);
+      }
+    });
+    return cleaned;
+  }
+  return data;
+}
+
 export function normalizeError(error: any, fallbackType = "UNKNOWN_ERROR") {
   return {
     type: error?.name || error?.code || fallbackType,

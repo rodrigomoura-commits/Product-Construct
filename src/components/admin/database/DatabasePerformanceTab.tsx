@@ -4,7 +4,7 @@ import {
   ArrowUpRight, AlertTriangle, CheckCircle2,
   Table, RefreshCw, Filter, Play, Code, Info
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabasePerformanceTab() {

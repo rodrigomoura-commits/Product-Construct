@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Profile, UserRole, AdminCtx } from '../types';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { Profile, AdminCtx, SystemUser } from '../types';
+import { cleanFirestoreData } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 interface AuthContextType {
   user: User | null;
-  profile: Profile | null;
+  profile: SystemUser | null;
   adminCtx: AdminCtx | null;
   loading: boolean;
   quotaExceeded: boolean;
@@ -18,62 +19,23 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+import { acceptPendingInvitesForUser } from '../lib/inviteAcceptance';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<SystemUser | null>(null);
   const [adminCtx, setAdminCtx] = useState<AdminCtx | null>(null);
   const [loading, setLoading] = useState(true);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-
-  // Helper to handle context-wide quota state
-  const handleQuotaError = (error: any) => {
-    if (error.message?.includes('Quota exceeded')) {
-      setQuotaExceeded(true);
-      return true;
-    }
-    return false;
-  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         setUser(user);
         if (user) {
-          // Sync profile
-          const profileRef = doc(db, 'profiles', user.uid);
-          
-          try {
-            const profileSnap = await getDoc(profileRef);
-            
-            if (!profileSnap.exists()) {
-              const newProfile = {
-                id: user.uid,
-                display_name: user.displayName || 'Usuário',
-                email: user.email || '',
-                avatar_url: user.photoURL || '',
-                created_at: serverTimestamp(),
-                updated_at: serverTimestamp(),
-              };
-              await setDoc(profileRef, newProfile);
-              setProfile(newProfile as unknown as Profile);
-            } else {
-              setProfile(profileSnap.data() as Profile);
-            }
-          } catch (profileError: any) {
-            console.error('Profile sync failed:', profileError);
-            if (profileError.message?.includes('Quota exceeded')) {
-              // Fallback profile if quota is dead
-              setProfile({
-                id: user.uid,
-                display_name: user.displayName || 'User (Limited Mode)',
-                email: user.email || '',
-                avatar_url: user.photoURL || '',
-              } as any);
-            }
-          }
-
-          // Check roles for admin context
-          await loadAdminContext(user.uid);
+          const syncedProfile = await syncUserProfile(user);
+          setProfile(syncedProfile);
+          await loadAdminContext(user.uid, syncedProfile);
         } else {
           setProfile(null);
           setAdminCtx(null);
@@ -82,10 +44,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Error during auth identity sync:', error);
         if (error.message?.includes('Quota exceeded')) {
           setQuotaExceeded(true);
-          toast.error("Limite de uso (Quota) do Firebase excedido. Algumas funcionalidades podem não funcionar até o reset diário.", {
-            id: 'quota-error',
-            duration: 10000
-          });
         }
       } finally {
         setLoading(false);
@@ -95,70 +53,180 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  async function loadAdminContext(userId: string) {
-    const roles: UserRole[] = [];
+  async function syncUserProfile(user: User): Promise<SystemUser> {
+    const email = user.email?.toLowerCase() || "";
+    const sanitizedEmail = email.replace(/[.@]/g, '_');
     
-    // Check if user is the hardcoded owner
-    const targetEmail = 'celular@rodrigomoura.net';
-    const userEmail = auth.currentUser?.email?.toLowerCase();
-    const isGlobalAdmin = userEmail === targetEmail;
+    // Check if user was explicitly deleted/blocked
+    const deletedUserRef = doc(db, "deleted_users", sanitizedEmail);
+    const deletedUserSnap = await getDoc(deletedUserRef);
+    
+    if (deletedUserSnap.exists()) {
+      await signOut(auth);
+      throw new Error("Seu acesso foi removido desta instância. Entre em contato com o suporte se achar que isso é um erro.");
+    }
 
-    if (isGlobalAdmin) {
-      roles.push('owner');
-      // Attempt to sync to DB but don't block if quota is dead
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
+    const displayName = user.displayName || email || "Usuário";
+    const photoUrl = user.photoURL || null;
+
+    const ownerEmail = (import.meta as any).env.VITE_OWNER_EMAIL?.toLowerCase() || "celular@rodrigomoura.net";
+    const isMasterOwner = email === ownerEmail;
+
+    if (!userSnap.exists()) {
       try {
-        const roleRef = doc(db, 'user_roles', `${userId}_owner`);
-        const roleSnap = await getDoc(roleRef);
-        if (!roleSnap.exists()) {
-          await setDoc(roleRef, {
-            user_id: userId,
-            role: 'owner',
-            granted_by: 'system',
-            created_at: serverTimestamp()
+        // Try finding a manually created user by email
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const emailQuerySnap = await getDocs(query(collection(db, "users"), where("email", "==", email)));
+        
+        if (!emailQuerySnap.empty) {
+          const manualUserDoc = emailQuerySnap.docs[0];
+          const existing = manualUserDoc.data() as SystemUser;
+          
+          if (existing.status === "suspended") {
+            throw new Error("Seu acesso está suspenso. Fale com um administrador.");
+          }
+          
+          const patch = cleanFirestoreData({
+            email,
+            display_name: existing.display_name || displayName,
+            photo_url: photoUrl || existing.photo_url || null,
+            uid: user.uid, // link the real uid to this manual user document
+            system_role: existing.system_role || (isMasterOwner ? "owner" : "user"),
+            status: existing.status || "active",
+            updated_at: serverTimestamp(),
+            last_login_at: serverTimestamp(),
+            metadata: {
+              ...(existing.metadata || {}),
+              normalized: true,
+              merged_from_manual: true
+            }
           });
+          
+          await setDoc(manualUserDoc.ref, patch, { merge: true });
+          
+          const updatedProfile = {
+            ...existing,
+            ...patch,
+            id: manualUserDoc.id
+          };
+          
+          try {
+            await acceptPendingInvitesForUser(user, updatedProfile);
+          } catch (e) {
+            console.warn("[AuthContext] failed to accept pending invites for manual user", e);
+          }
+          
+          return updatedProfile as SystemUser;
         }
       } catch (error) {
-        console.warn('Could not sync owner role to DB (likely quota):', error);
+        console.warn("[AuthContext] failed to query manual user by email", error);
       }
-    }
 
-    // Only try to fetch external roles if NOT global admin or if quota permits
-    if (!isGlobalAdmin) {
-      try {
-        const q = query(collection(db, 'user_roles'), where('user_id', '==', userId));
-        const querySnap = await getDocs(q);
-        querySnap.docs.forEach(d => {
-          const roleData = d.data();
-          if (roleData.role && !roles.includes(roleData.role)) {
-            roles.push(roleData.role as UserRole);
-          }
-        });
-      } catch (error: any) {
-        console.warn('Failed to fetch user roles:', error);
-        if (error.message?.includes('Quota exceeded')) {
-          setQuotaExceeded(true);
+      const newProfile = cleanFirestoreData({
+        id: user.uid,
+        uid: user.uid,
+        email,
+        display_name: displayName,
+        photo_url: photoUrl,
+        system_role: isMasterOwner ? "owner" : "user",
+        status: "active",
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        last_login_at: serverTimestamp(),
+        metadata: {
+          source: isMasterOwner ? "bootstrap_owner" : "google_login",
+          normalized: true
         }
+      });
+
+      await setDoc(userRef, newProfile);
+      
+      try {
+        await acceptPendingInvitesForUser(user, newProfile);
+      } catch (e) {
+        console.warn("[AuthContext] failed to accept pending invites", e);
       }
+      
+      return newProfile as SystemUser;
     }
 
-    const isOwner = roles.includes('owner');
-    const isAdmin = roles.includes('admin') || isOwner;
+    const existing = userSnap.data() as SystemUser;
+
+    if (existing.status === "suspended") {
+      throw new Error("Seu acesso está suspenso. Fale com um administrador.");
+    }
+
+    const patch = cleanFirestoreData({
+      email,
+      display_name: existing.display_name || displayName,
+      photo_url: photoUrl || existing.photo_url || null,
+      uid: existing.uid || user.uid,
+      system_role: existing.system_role || (isMasterOwner ? "owner" : "user"),
+      status: existing.status || "active",
+      updated_at: serverTimestamp(),
+      last_login_at: serverTimestamp(),
+      metadata: {
+        ...(existing.metadata || {}),
+        normalized: true
+      }
+    });
+
+    await setDoc(userRef, patch, { merge: true });
+
+    const updatedProfile = {
+      ...existing,
+      ...patch,
+      id: userSnap.id
+    };
+
+    try {
+      await acceptPendingInvitesForUser(user, updatedProfile);
+    } catch (e) {
+      console.warn("[AuthContext] failed to accept pending invites", e);
+    }
+
+    return updatedProfile as SystemUser;
+  }
+
+  async function loadAdminContext(userId: string, profile: SystemUser) {
+    const role = profile.system_role || "user";
+
+    const isOwner = role === "owner";
+    const isAdmin = role === "admin" || role === "owner";
 
     setAdminCtx({
       isAdmin,
       isOwner,
-      roles,
-      userId
+      roles: [(role === "user" ? "viewer" : role) as any],
+      userId,
+      email: profile.email
     });
   }
 
+
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account"
+    });
     await signInWithPopup(auth, provider);
   };
 
   const logout = async () => {
-    await signOut(auth);
+    try {
+      await signOut(auth);
+      setUser(null);
+      setProfile(null);
+      setAdminCtx(null);
+      localStorage.removeItem("activeProductId");
+      localStorage.removeItem("activeProductContext");
+      sessionStorage.clear();
+    } catch (error) {
+      console.error("[AuthContext] Error signing out:", error);
+      throw error;
+    }
   };
 
   return (

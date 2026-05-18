@@ -4,7 +4,7 @@ import {
   Search, Download, Trash2, ArrowRight, Activity, Zap, 
   ExternalLink, Layers, PieChart, Filter, Plus
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseStorageTab() {

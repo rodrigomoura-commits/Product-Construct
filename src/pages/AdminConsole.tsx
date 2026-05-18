@@ -7,6 +7,7 @@ import {
   LogOut, Bell, Search, Menu, X, CheckCircle2, AlertCircle, ArrowLeft,
   Activity, Clock, Database as DatabaseIcon, Sparkles
 } from 'lucide-react';
+import AdminSectionErrorBoundary from '../components/admin/AdminSectionErrorBoundary';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -50,6 +51,8 @@ export default function AdminConsole() {
   const activeSection = (searchParams.get('section') as SectionId) || 'dashboard';
   const from = searchParams.get('from');
 
+  const canRunScheduler = !!(adminCtx?.isOwner || adminCtx?.isAdmin);
+
   useEffect(() => {
     if (activeSection === 'memory') {
       setSearchParams({ section: 'mindflow' });
@@ -89,7 +92,7 @@ export default function AdminConsole() {
       case 'tona-personality': return <TonaPersonalityAdminSection />;
       case 'memory': return <MindflowAdminSection ctx={adminCtx!} />; // Safe fallback/redirect
       case 'database': return <DatabaseAdminSection />;
-      case 'schedule': return <ScheduleAdminSection ctx={adminCtx!} />;
+      case 'schedule': return <ScheduleAdminSection ctx={adminCtx!} user={user} />;
       case 'agents': return <AgentsAdminSection />;
       case 'settings': return <SettingsAdminSection />;
       case 'audit': return <AuditAdminSection />;
@@ -214,7 +217,9 @@ export default function AdminConsole() {
                transition={{ duration: 0.2 }}
                className="max-w-7xl mx-auto w-full h-full"
              >
+              <AdminSectionErrorBoundary sectionName={activeSection}>
                 {renderSection()}
+              </AdminSectionErrorBoundary>
              </motion.div>
            </AnimatePresence>
         </div>

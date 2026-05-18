@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plug, AlertCircle, CheckCircle2, Loader2, RefreshCw, Settings2, Globe, ShieldAlert, CloudOff, Info } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getLLMHealth } from '../../lib/geminiProxy';
+import { GeminiConfig } from '../../components/admin/integrations/GeminiConfig';
 import GeminiConfigReviewModal from '../../components/integrations/GeminiConfigReviewModal';
 import { motion } from 'motion/react';
 

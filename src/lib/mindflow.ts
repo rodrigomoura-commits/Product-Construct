@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, onSnapshot, orderBy, limit, getDoc, writeBatch } from 'firebase/firestore';
 import { db, cleanFirestoreData } from './firebase';
+import { safeText } from './safeText';
 import { 
   MindflowLearning, 
   MindflowLearningCandidate, 
@@ -15,9 +16,9 @@ import {
   MindflowLearningReasoningLink
 } from '../types';
 
-import { getUserMemoriesCollection } from './mindflowCollections';
+import { getUserMemoriesCollection, getProductMemoriesCollection, getProductSynthesisCollection, getProductInteractionsCollection } from './mindflowCollections';
 import { callGeminiProxy } from './geminiProxy';
-import { GEMINI_MODEL } from '../config/ai';
+import { touchStage } from './progressEngine';
 
 /**
  * MINDFLOW COGNITIVE ARCHITECTURE (V2)
@@ -35,6 +36,7 @@ export interface ContextPack {
   risks: MindflowLearning[];
   hypotheses: MindflowLearning[];
   evidence: MindflowLearning[];
+  product_memories: any[];
   reasonings: MindflowReasoning[];
   priority_reasonings: MindflowReasoning[];
   hybrid_reasonings: MindflowReasoning[];
@@ -44,6 +46,30 @@ export interface ContextPack {
   open_gaps: string[];
   warnings: string[];
   reasoning_warnings: string[];
+}
+
+/**
+ * ASYNC SAFE GET DOCS
+ * Wraps getDocs with try/catch to prevent partial failures from crashing the context retrieval.
+ */
+async function safeGetDocs(label: string, q: any, warnings: string[]) {
+  try {
+    return await getDocs(q);
+  } catch (error: any) {
+    const code = error?.code || 'unknown';
+    const message = error?.message || String(error);
+    console.warn(`[MindFlow] ${label} retrieval failed:`, { code, message });
+    warnings.push(`${label}: ${code}`);
+    
+    // Return a mock result compatible with Firestore DocumentSnapshot
+    return {
+      docs: [],
+      empty: true,
+      size: 0,
+      forEach: () => {},
+      map: () => []
+    } as any;
+  }
 }
 
 /**
@@ -73,64 +99,96 @@ export async function retrieveMindflowContext(params: {
   let userMemories: MindflowUserMemory[] = [];
   const warnings: string[] = [];
   const reasoning_warnings: string[] = [];
+  let productMemories: any[] = [];
 
   try {
-    // 1. ASYNC RETRIEVAL FROM ALL LAYERS
-    const queries = [];
-
+    // 1. SAFE RETRIEVAL FROM ALL LAYERS
+    
     // Layer 2: Learnings (Consolidated Knowledge)
-    queries.push(getDocs(query(
-      collection(db, 'mindflow_learnings'), 
-      where('knowledge_type', '==', 'Base'),
-      where('is_active', '==', true),
-      limit(20)
-    )));
-
-    if (productId) {
-      queries.push(getDocs(query(
-        collection(db, 'mindflow_learnings'),
-        where('product_id', '==', productId),
+    const baseLearningsSnap = await safeGetDocs(
+      "base_learnings",
+      query(
+        collection(db, 'mindflow_learnings'), 
+        where('knowledge_type', '==', 'Base'),
         where('is_active', '==', true),
         limit(20)
-      )));
+      ),
+      warnings
+    );
+    learnings.push(...baseLearningsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as MindflowLearning)));
+
+    if (productId) {
+      const productLearningsSnap = await safeGetDocs(
+        "product_learnings",
+        query(
+          collection(db, 'mindflow_learnings'),
+          where('product_id', '==', productId),
+          where('is_active', '==', true),
+          limit(20)
+        ),
+        warnings
+      );
+      learnings.push(...productLearningsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as MindflowLearning)));
     }
 
-    queries.push(getDocs(query(
-      collection(db, 'mindflow_learnings'),
-      where('user_id', '==', userId),
-      where('is_active', '==', true),
-      limit(15)
-    )));
+    const userLearningsSnap = await safeGetDocs(
+      "user_learnings",
+      query(
+        collection(db, 'mindflow_learnings'),
+        where('user_id', '==', userId),
+        where('is_active', '==', true),
+        limit(15)
+      ),
+      warnings
+    );
+    learnings.push(...userLearningsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as MindflowLearning)));
 
     // Layer 3: Reasonings (Deep Conclusions)
-    queries.push(getDocs(query(
-      collection(db, 'mindflow_reasonings'),
-      where('status', '==', 'active'),
-      where('is_active', '==', true),
-      limit(15)
-    )));
+    const reasoningsSnap = await safeGetDocs(
+      "reasonings",
+      query(
+        collection(db, 'mindflow_reasonings'),
+        where('status', '==', 'active'),
+        where('is_active', '==', true),
+        limit(15)
+      ),
+      reasoning_warnings
+    );
+    reasonings = reasoningsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as MindflowReasoning));
 
-    // Layer 1: Recent User Memories (Historical interactions)
-    queries.push(getDocs(query(
-      getUserMemoriesCollection(db),
-      where('user_id', '==', userId),
-      orderBy('created_at', 'desc'),
-      limit(5)
-    )));
+    // Layer 1: Recent User Memories & Product Memories
+    const userMemoriesSnap = await safeGetDocs(
+      "user_memories",
+      query(
+        getUserMemoriesCollection(db, userId),
+        orderBy('created_at', 'desc'),
+        limit(5)
+      ),
+      warnings
+    );
+    userMemories = userMemoriesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as MindflowUserMemory));
 
-    const snaps = await Promise.all(queries);
-    
-    // Process results
-    const learningSnaps = snaps.slice(0, productId ? 3 : 2);
-    learningSnaps.forEach(snap => {
-      learnings.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning)));
-    });
+    if (productId) {
+      const productMemoriesSnap = await safeGetDocs(
+        "product_memories",
+        query(
+          getProductMemoriesCollection(db, productId),
+          orderBy('created_at', 'desc'),
+          limit(5)
+        ),
+        warnings
+      );
+      productMemories = productMemoriesSnap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
+    }
 
-    const reasoningSnap = snaps[snaps.length - 2];
-    reasonings = reasoningSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowReasoning));
-
-    const historySnap = snaps[snaps.length - 1];
-    userMemories = historySnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowUserMemory));
+    // Post-process learnings for safety
+    learnings = learnings.map(l => ({
+      ...l,
+      learning: safeText(l.learning),
+      theme: safeText(l.theme),
+      sub_theme: safeText(l.sub_theme),
+      classification: safeText(l.classification) as any
+    }));
 
     // Deduplicate learnings
     const seenL = new Set<string>();
@@ -141,16 +199,20 @@ export async function retrieveMindflowContext(params: {
     });
 
     // 2. CONFLICT CHECK
-    const conflictsSnap = await getDocs(query(
-      collection(db, 'mindflow_conflicts'),
-      where('status', 'in', ['open', 'grouped']),
-      limit(50)
-    ));
+    const conflictsSnap = await safeGetDocs(
+      "mindflow_conflicts",
+      query(
+        collection(db, 'mindflow_conflicts'),
+        where('status', 'in', ['open', 'grouped']),
+        limit(50)
+      ),
+      warnings
+    );
     
-    const activeConflicts = conflictsSnap.docs.map(d => d.data());
+    const activeConflicts = conflictsSnap.docs.map((d: any) => d.data());
     const criticalInvolvedIds = new Set<string>();
     
-    activeConflicts.forEach(c => {
+    activeConflicts.forEach((c: any) => {
       if (c.severity === 'critical') {
         (c.involved_memory_ids || []).forEach((id: string) => criticalInvolvedIds.add(id));
       }
@@ -165,27 +227,32 @@ export async function retrieveMindflowContext(params: {
     }
 
     // 3. LOG RETRIEVAL
-    await addDoc(collection(db, 'mindflow_retrieval_logs'), cleanFirestoreData({
-      user_id: userId,
-      product_id: productId || null,
-      stage_id: stageId || null,
-      agent_id: agentId || null,
-      query_text: userMessage,
-      retrieval_strategy: 'cognitive_triality_v2',
-      learnings_retrieved: learnings.map(l => l.id),
-      learnings_used: learnings.slice(0, 10).map(l => l.id),
-      reasonings_retrieved: reasonings.map(r => r.id),
-      reasonings_used: reasonings.slice(0, 5).map(r => r.id),
-      created_at: serverTimestamp(),
-      metadata: { 
-        history_depth: userMemories.length,
-        conflict_shield_active: criticalInvolvedIds.size > 0
-      }
-    } as any));
+    try {
+      await addDoc(collection(db, 'mindflow_retrieval_logs'), cleanFirestoreData({
+        user_id: userId,
+        product_id: productId || null,
+        stage_id: stageId || null,
+        agent_id: agentId || null,
+        query_text: userMessage,
+        retrieval_strategy: 'cognitive_triality_v2',
+        learnings_retrieved: learnings.map(l => l.id),
+        learnings_used: learnings.slice(0, 10).map(l => l.id),
+        reasonings_retrieved: reasonings.map(r => r.id),
+        reasonings_used: reasonings.slice(0, 5).map(r => r.id),
+        created_at: serverTimestamp(),
+        metadata: { 
+          history_depth: userMemories.length,
+          conflict_shield_active: criticalInvolvedIds.size > 0,
+          partial_failure: warnings.length > 0
+        }
+      } as any));
+    } catch (logError) {
+      console.warn("[MindFlow] Could not write retrieval log:", logError);
+    }
 
   } catch (e) {
-    console.error("Mindflow Context Retrieval failed:", e);
-    warnings.push(`Erro na recuperação: ${e instanceof Error ? e.message : 'Desconhecido'}`);
+    console.error("Mindflow Context Retrieval failed (unexpected):", e);
+    warnings.push(`Erro inesperado na recuperação: ${e instanceof Error ? e.message : 'Desconhecido'}`);
   }
 
   return {
@@ -199,6 +266,7 @@ export async function retrieveMindflowContext(params: {
     risks: learnings.filter(l => l.classification === 'risco'),
     hypotheses: learnings.filter(l => l.classification === 'hipótese'),
     evidence: learnings.filter(l => l.classification === 'evidência'),
+    product_memories: productMemories,
     reasonings,
     priority_reasonings: reasonings.filter(r => r.priority === 'critical' || r.priority === 'high'),
     hybrid_reasonings: reasonings.filter(r => r.reasoning_type === 'strategic' || r.reasoning_type === 'hybrid_reasoning'),
@@ -268,8 +336,11 @@ export async function extractMindflowLearning(params: {
 
   try {
     const responseText = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "summarization",
+      agentId: "tona_orchestrator",
+      productId,
+      stageId,
       config: {
         responseMimeType: "application/json"
       }
@@ -286,17 +357,17 @@ export async function extractMindflowLearning(params: {
           agent_id: agentId || null,
           conversation_id: conversationId || null,
           source_type: 'conversation',
-          raw_input: userMessage,
-          tona_response: assistantResponse,
-          extracted_learning: cand.learning,
-          suggested_theme: cand.theme,
-          suggested_sub_theme: cand.sub_theme,
-          suggested_classification: cand.classification,
+          raw_input: safeText(userMessage),
+          tona_response: safeText(assistantResponse),
+          extracted_learning: safeText(cand.learning),
+          suggested_theme: safeText(cand.theme),
+          suggested_sub_theme: safeText(cand.sub_theme),
+          suggested_classification: safeText(cand.classification) as any,
           confidence_score: cand.confidence,
           should_save: cand.confidence > 0.8,
           review_status: cand.confidence > 0.95 ? 'auto_saved' : 'pending',
           created_at: serverTimestamp(),
-          metadata: { reason: cand.reason }
+          metadata: { reason: safeText(cand.reason) }
         };
 
         const docRef = await addDoc(collection(db, 'mindflow_learning_candidates'), cleanFirestoreData(candidateData));
@@ -376,10 +447,10 @@ export async function saveMindflowLearning(params: {
   const learningData: Omit<MindflowLearning, 'id'> = {
     learning_date: new Date().toISOString().split('T')[0],
     learning_type: learningType,
-    theme,
-    sub_theme: subTheme || 'Geral',
-    learning,
-    classification,
+    theme: safeText(theme),
+    sub_theme: safeText(subTheme || 'Geral'),
+    learning: safeText(learning),
+    classification: safeText(classification) as any,
     source_type: sourceType,
     scope_type: scopeType,
     user_id: userId,
@@ -400,6 +471,11 @@ export async function saveMindflowLearning(params: {
   };
 
   const docRef = await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData(learningData));
+
+  if (productId && stageId) {
+    await touchStage(productId, stageId, 'memory');
+  }
+
   return docRef.id;
 }
 
@@ -418,10 +494,10 @@ export async function importMindflowCSV(userId: string, rows: any[]) {
       const learningData: Omit<MindflowLearning, 'id'> = {
         learning_date: Data || new Date().toISOString().split('T')[0],
         learning_type: (type === 'Base' || type === 'Adquirida') ? type : 'Adquirida',
-        theme: Tema || 'Importado',
-        sub_theme: sub || 'Geral',
-        learning: Conhecimento,
-        classification: type === 'Base' ? 'instrução' : 'contexto',
+        theme: safeText(Tema || 'Importado'),
+        sub_theme: safeText(sub || 'Geral'),
+        learning: safeText(Conhecimento),
+        classification: (type === 'Base' ? 'instrução' : 'contexto') as any,
         scope_type: 'global',
         confidence_score: type === 'Base' ? 1.0 : 0.8,
         relevance_score: 0.8,

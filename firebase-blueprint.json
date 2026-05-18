@@ -152,16 +152,43 @@
       "type": "object",
       "properties": {
         "product_id": { "type": "string" },
-        "title": { "type": "string" },
-        "file_url": { "type": "string", "format": "uri" },
-        "file_type": { "type": "string" },
-        "processing_status": { "type": "string", "enum": ["pending", "processing", "processed", "error"] },
-        "extracted_content": { "type": "string" },
-        "created_by": { "type": "string" },
+        "file_name": { "type": "string" },
+        "storage_path": { "type": "string" },
+        "download_url": { "type": "string", "format": "uri" },
+        "file_extension": { "type": "string" },
+        "mime_type": { "type": "string" },
+        "size_bytes": { "type": "integer" },
+        "status": { "type": "string", "enum": ["uploading", "uploaded", "extracting_text", "processing_ai", "processed", "failed", "deleted"] },
+        "ai_summary": { "type": "string" },
+        "extracted_items_count": { "type": "object" },
+        "error_message": { "type": "string" },
+        "stage_key": { "type": "string" },
+        "uploaded_by": { "type": "string" },
+        "uploaded_by_email": { "type": "string" },
+        "uploaded_by_name": { "type": "string" },
         "created_at": { "type": "string", "format": "date-time" },
         "updated_at": { "type": "string", "format": "date-time" }
       },
-      "required": ["product_id", "title", "file_url"]
+      "required": ["product_id", "file_name"]
+    },
+    "ProductDocumentExtraction": {
+      "title": "Document Extraction",
+      "description": "Specific insight extracted from a document by the AI.",
+      "type": "object",
+      "properties": {
+        "document_id": { "type": "string" },
+        "product_id": { "type": "string" },
+        "type": { "type": "string", "enum": ["fact", "hypothesis", "evidence", "decision", "risk", "gap", "learning", "action"] },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "source_quote": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+        "classification_reason": { "type": "string" },
+        "memory_status": { "type": "string", "enum": ["pending", "added", "ignored"] },
+        "memory_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["document_id", "type", "content"]
     },
     "HistoryEvent": {
       "title": "History Event",
@@ -592,6 +619,32 @@
         "created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["user_id", "source", "event_type"]
+    },
+    "SystemSetting": {
+      "title": "System Setting",
+      "description": "Global application configuration.",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string" },
+        "defaultModel": { "type": "string" },
+        "displayName": { "type": "string" },
+        "useCaseModels": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      }
+    },
+    "AuditLog": {
+      "title": "Audit Log",
+      "description": "Historical record of system changes.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "previousValue": { "type": "object" },
+        "newValue": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -630,6 +683,10 @@
     "products/{productId}/documents/{documentId}": {
       "schema": "Document",
       "description": "Product documents."
+    },
+    "products/{productId}/documents/{documentId}/extractions/{extractionId}": {
+      "schema": "ProductDocumentExtraction",
+      "description": "AI extractions from a product document."
     },
     "products/{productId}/history/{eventId}": {
       "schema": "HistoryEvent",
@@ -738,6 +795,14 @@
     "tona_personality_learning_events/{eventId}": {
       "schema": "TonaPersonalityLearningEvent",
       "description": "Style detection and personality learning signals."
+    },
+    "system_settings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Global system configurations."
+    },
+    "audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit logs."
     }
   }
 }

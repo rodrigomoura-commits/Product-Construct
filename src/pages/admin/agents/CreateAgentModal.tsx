@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Bot, X, Save, AlertCircle, Info, Sparkles, Brain, Zap, Target, FileText, Workflow, Loader2 } from 'lucide-react';
 import { db, auth } from '../../../lib/firebase';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 import { Agent, StageKey } from '../../../types';
-import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
+import { GEMINI_MODELS } from '../../../config/ai';
 
 interface Props {
   isOpen: boolean;
@@ -51,7 +51,7 @@ export default function CreateAgentModal({ isOpen, onClose, onSuccess }: Props) 
     primary_discipline: 'Product Management',
     primary_stage_id: 'sense' as StageKey | 'global',
     status: 'draft' as const,
-    default_model: GEMINI_MODEL,
+    default_model: GEMINI_MODELS[0].value,
     temperature: 0.4,
     mindflow_enabled: true,
     initial_instruction: '',

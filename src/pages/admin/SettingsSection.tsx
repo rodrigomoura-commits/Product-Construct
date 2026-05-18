@@ -1,12 +1,24 @@
-import React from 'react';
-import { Settings, Shield, Bell, Cloud, Lock, Database } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Settings, Shield, Bell, Cloud, Lock, Database, Loader2, RefreshCw, ChevronRight } from 'lucide-react';
+import GeminiConfigReviewModal from '../../components/integrations/GeminiConfigReviewModal';
+import { GeminiConfig } from '../../components/admin/integrations/GeminiConfig';
+import { cn } from '../../lib/utils';
 
 export default function SettingsAdminSection() {
+  const [loading, setLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const fetchConfig = async () => {
+    // ... force children to reload or something. For now, it's ok.
+  };
+
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-3xl font-black text-zinc-900 tracking-tight">Configurações do Sistema</h2>
-        <p className="text-zinc-500 mt-1 font-medium italic">Gerencie parâmetros globais, segurança e infraestrutura.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-zinc-900 tracking-tight">Configurações do Sistema</h2>
+          <p className="text-zinc-500 mt-1 font-medium italic">Gerencie parâmetros globais, segurança e infraestrutura.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -49,23 +61,15 @@ export default function SettingsAdminSection() {
          </div>
 
          <div className="space-y-6">
-            <section className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm">
-               <h3 className="font-bold text-zinc-900 flex items-center gap-2 mb-4">
-                 <Cloud className="w-5 h-5 text-purple-500" /> Infraestrutura
-               </h3>
-               <div className="space-y-4">
-                  <div className="p-4 bg-zinc-900 rounded-2xl">
-                     <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">LLM Provider</p>
-                     <p className="text-white font-bold tracking-tight">Google Gemini 1.5 Pro</p>
-                  </div>
-                  <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl">
-                     <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Embedding Engine</p>
-                     <p className="text-zinc-900 font-bold tracking-tight italic">Nenhum configurado</p>
-                  </div>
-               </div>
-            </section>
+            <GeminiConfig />
          </div>
       </div>
+
+      <GeminiConfigReviewModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)}
+        onStatusUpdate={fetchConfig}
+      />
     </div>
   );
 }

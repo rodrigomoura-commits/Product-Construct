@@ -1,6 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { collection, query, getDocs, orderBy, limit, onSnapshot, doc, setDoc, serverTimestamp, addDoc, where, updateDoc, writeBatch, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { safeText, toSearchableText } from '../../lib/safeText';
 import { 
   MindflowLearning, 
   AdminCtx, 
@@ -28,19 +30,20 @@ import { motion, AnimatePresence } from 'motion/react';
 import { promoteToBaseLearning } from '../../lib/mindflow';
 import { runDailyMindflowReasoning } from '../../lib/mindflowReasoning';
 import { toast } from 'react-hot-toast';
-import { GEMINI_MODEL } from '../../config/ai';
 import MindflowContextsSection from './MindflowContextsSection';
 import MindflowInteractionsSection from './MindflowInteractionsSection';
 import MindflowUsersSection from './MindflowUsersSection';
 import MindflowConflictsSection from './MindflowConflictsSection';
 import MindflowBehavioralSection from './MindflowBehavioralSection';
 import MindflowTraceSection from './MindflowTraceSection';
+import MindflowGuardrailsSection from './MindflowGuardrailsSection';
 import ImportLearningsButton from '../../components/admin/mindflow/ImportLearningsButton';
 import { MindflowImportJob } from '../../types';
 
-type MindflowTab = 'overview' | 'learnings' | 'reasonings' | 'base' | 'acquired' | 'user_memories' | 'contexts' | 'candidates' | 'conflicts' | 'import' | 'users' | 'logs' | 'config';
+type MindflowTab = 'overview' | 'learnings' | 'reasonings' | 'base' | 'acquired' | 'user_memories' | 'contexts' | 'candidates' | 'conflicts' | 'guardrails' | 'import' | 'users' | 'logs' | 'config';
 
 export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
+  const { user, profile, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<MindflowTab>('overview');
   const [learnings, setLearnings] = useState<MindflowLearning[]>([]);
   const [reasonings, setReasonings] = useState<MindflowReasoning[]>([]);
@@ -58,6 +61,11 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
   const [importJobs, setImportJobs] = useState<MindflowImportJob[]>([]);
   const [llmHealth, setLlmHealth] = useState<any>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [sectionErrors, setSectionErrors] = useState<Record<string, {
+    message: string;
+    code?: string;
+    path?: string;
+  }>>({});
   
   const [newLearning, setNewLearning] = useState<Partial<MindflowLearning>>({
     learning_type: 'Base',
@@ -77,14 +85,56 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Gate loading based on auth and roles for extra safety
+  const canLoadData = useMemo(() => {
+    return !authLoading && user?.uid && (
+      profile?.system_role === 'owner' || 
+      profile?.system_role === 'admin' ||
+      (profile as any)?.role === 'owner' ||
+      (profile as any)?.role === 'admin'
+    );
+  }, [authLoading, user?.uid, profile]);
+
   useEffect(() => {
+    if (!canLoadData) {
+      if (!authLoading) {
+        console.log("[MindflowAdmin] Waiting for profile or insufficient permissions to load.", {
+          uid: user?.uid,
+          profileReady: !!profile,
+          systemRole: profile?.system_role,
+          role: (profile as any)?.role
+        });
+      }
+      return;
+    }
+
     setLoading(true);
     let unsubs: (() => void)[] = [];
 
+    // Diagnostic Logs
+    console.log("[MindflowAdmin] Permission Diagnostic", {
+      uid: user?.uid,
+      email: user?.email,
+      systemRole: profile?.system_role || (profile as any)?.role,
+      authLoading,
+      activeTab,
+      timestamp: new Date().toISOString()
+    });
+
+    console.log("[MindflowAdmin] Collections required for this view:", 
+      activeTab === 'overview' ? ['mindflow_learnings', 'mindflow_learning_candidates', 'mindflow_conflict_groups'] :
+      activeTab === 'learnings' || activeTab === 'base' || activeTab === 'acquired' ? ['mindflow_learnings'] :
+      activeTab === 'candidates' ? ['mindflow_learning_candidates'] :
+      activeTab === 'reasonings' ? ['mindflow_reasonings', 'mindflow_reasoning_runs'] :
+      activeTab === 'conflicts' ? ['mindflow_conflict_groups'] :
+      activeTab === 'logs' ? ['mindflow_retrieval_logs'] :
+      activeTab === 'import' ? ['mindflow_import_jobs'] : []
+    );
+
     // Data Load based on Tab
     if (['overview', 'learnings', 'base', 'acquired'].includes(activeTab)) {
+      console.log("[MindflowAdmin] Attaching listener to mindflow_learnings...");
       let q = query(collection(db, 'mindflow_learnings'), orderBy('created_at', 'desc'), limit(50));
-      
       if (activeTab === 'base') {
         q = query(collection(db, 'mindflow_learnings'), where('learning_type', '==', 'Base'), orderBy('created_at', 'desc'), limit(50));
       } else if (activeTab === 'acquired') {
@@ -92,53 +142,115 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
       }
 
       const unsub = onSnapshot(q, (snap) => {
-        setLearnings(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning)));
+        console.log("[MindflowAdmin] Snapshot received for mindflow_learnings. Count:", snap.size);
+        setLearnings(snap.docs.map(d => {
+          const raw = d.data();
+          return { 
+            id: d.id, 
+            ...raw,
+            learning: safeText(raw.learning),
+            title: safeText(raw.title),
+            theme: safeText(raw.theme),
+            sub_theme: safeText(raw.sub_theme),
+            classification: safeText(raw.classification || "aprendizado") as any,
+            learning_type: safeText(raw.learning_type || "Adquirida") as any
+          } as MindflowLearning;
+        }));
         setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] PERMISSION-DENIED or LOAD-ERROR at mindflow_learnings:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_learnings');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_learnings: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_learnings"
+          }
+        }));
       });
       unsubs.push(unsub);
     }
 
     if (activeTab === 'overview' || activeTab === 'candidates') {
+      console.log("[MindflowAdmin] Attaching listener to mindflow_learning_candidates...");
       const q = query(collection(db, 'mindflow_learning_candidates'), where('review_status', '==', 'pending'), orderBy('created_at', 'desc'), limit(50));
       const unsub = onSnapshot(q, (snap) => {
+        console.log("[MindflowAdmin] Snapshot received for mindflow_learning_candidates. Count:", snap.size);
         setCandidates(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearningCandidate)));
         if (activeTab === 'candidates') setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] PERMISSION-DENIED or LOAD-ERROR at mindflow_learning_candidates:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_learning_candidates');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_learning_candidates: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_learning_candidates"
+          }
+        }));
       });
       unsubs.push(unsub);
     }
 
     if (activeTab === 'reasonings') {
+      console.log("[MindflowAdmin] Attaching listener to mindflow_reasonings and reasoning_runs...");
       const q = query(collection(db, 'mindflow_reasonings'), orderBy('created_at', 'desc'), limit(20));
       const unsubReason = onSnapshot(q, (snap) => {
+        console.log("[MindflowAdmin] Snapshot received for mindflow_reasonings. Count:", snap.size);
         setReasonings(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowReasoning)));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, 'mindflow_reasonings'));
+      }, (err) => {
+        console.error("[MindflowAdmin] PERMISSION-DENIED or LOAD-ERROR at mindflow_reasonings:", err);
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_reasonings: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_reasonings"
+          }
+        }));
+      });
       unsubs.push(unsubReason);
 
       const qRuns = query(collection(db, 'mindflow_reasoning_runs'), orderBy('started_at', 'desc'), limit(10));
       const unsubRuns = onSnapshot(qRuns, (snap) => {
+        console.log("[MindflowAdmin] Snapshot received for mindflow_reasoning_runs. Count:", snap.size);
         setReasoningRuns(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowReasoningRun)));
         setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] PERMISSION-DENIED or LOAD-ERROR at mindflow_reasoning_runs:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_reasoning_runs');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_reasoning_runs: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_reasoning_runs"
+          }
+        }));
       });
       unsubs.push(unsubRuns);
     }
 
     if (activeTab === 'overview' || activeTab === 'conflicts') {
+      console.log("[MindflowAdmin] Attaching listener to mindflow_conflict_groups...");
       const q = query(collection(db, 'mindflow_conflict_groups'), where('status', 'in', ['open', 'in_review']), limit(50));
       const unsubConflicts = onSnapshot(q, (snap) => {
+        console.log("[MindflowAdmin] Snapshot received for mindflow_conflict_groups. Count:", snap.size);
         setConflictGroups(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowConflictGroup)));
         if (activeTab === 'conflicts') setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] PERMISSION-DENIED or LOAD-ERROR at mindflow_conflict_groups:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_conflict_groups');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_conflict_groups: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_conflict_groups"
+          }
+        }));
       });
       unsubs.push(unsubConflicts);
     }
@@ -149,8 +261,16 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
         setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowRetrievalLog)));
         setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] Failed to load mindflow_retrieval_logs:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_retrieval_logs');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_retrieval_logs: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_retrieval_logs"
+          }
+        }));
       });
       unsubs.push(unsubLogs);
     }
@@ -161,8 +281,16 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
         setImportJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowImportJob)));
         setLoading(false);
       }, (err) => {
+        console.error("[MindflowAdmin] Failed to load mindflow_import_jobs:", err);
         setLoading(false);
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_import_jobs');
+        setSectionErrors(prev => ({
+          ...prev,
+          mindflow_import_jobs: {
+            message: err?.message || String(err),
+            code: (err as any)?.code || "unknown",
+            path: "mindflow_import_jobs"
+          }
+        }));
       });
       unsubs.push(unsub);
     }
@@ -188,7 +316,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
     }
 
     return () => unsubs.forEach(unsub => unsub());
-  }, [activeTab]);
+  }, [activeTab, canLoadData]);
 
   useEffect(() => {
     if (loading) {
@@ -209,6 +337,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
     { id: 'reasonings', label: 'Raciocínios Profundos', icon: Workflow, color: 'text-amber-500' },
     { id: 'user_memories', label: 'Memórias do Usuário', icon: History, color: 'text-rose-500' },
     { id: 'conflicts', label: 'Central de Conflitos', icon: AlertTriangle, color: 'text-red-500', badge: conflictGroups.length },
+    { id: 'guardrails', label: 'Guardrails', icon: ShieldCheck, color: 'text-blue-600' },
     { id: 'contexts', label: 'Mapas de Contexto', icon: Target, color: 'text-blue-500' },
     { id: 'users', label: 'Biometria Comportamental', icon: Users, color: 'text-zinc-500' },
     { id: 'logs', label: 'Trilha Censorial', icon: ScanEye, color: 'text-zinc-400' },
@@ -225,6 +354,10 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
     try {
       await addDoc(collection(db, 'mindflow_learnings'), {
         ...newLearning,
+        learning: safeText(newLearning.learning),
+        theme: safeText(newLearning.theme),
+        title: safeText(newLearning.title),
+        sub_theme: safeText(newLearning.sub_theme),
         learning_date: new Date().toISOString().split('T')[0],
         usage_count: 0,
         is_active: true,
@@ -266,10 +399,10 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
       await addDoc(collection(db, 'mindflow_learnings'), {
         learning_date: new Date().toISOString().split('T')[0],
         learning_type: 'Adquirida',
-        theme: candidate.suggested_theme || 'Geral',
-        sub_theme: candidate.suggested_sub_theme || 'Geral',
-        learning: candidate.extracted_learning,
-        classification: candidate.suggested_classification || 'aprendizado',
+        theme: safeText(candidate.suggested_theme || 'Geral'),
+        sub_theme: safeText(candidate.suggested_sub_theme || 'Geral'),
+        learning: safeText(candidate.extracted_learning),
+        classification: safeText(candidate.suggested_classification || 'aprendizado') as any,
         scope_type: candidate.product_id ? 'product' : 'user',
         confidence_score: candidate.confidence_score,
         relevance_score: 0.8,
@@ -304,20 +437,124 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
   };
 
   const filteredLearnings = learnings.filter(l => {
-    const learning = l.learning || '';
-    const theme = l.theme || '';
-    const title = l.title || '';
-    const term = searchTerm.toLowerCase();
+    const term = toSearchableText(searchTerm);
 
-    const matchesSearch = learning.toLowerCase().includes(term) || 
-                          theme.toLowerCase().includes(term) ||
-                          title.toLowerCase().includes(term);
-    const matchesClassification = filterClassification === 'all' || l.classification === filterClassification;
+    const matchesSearch = 
+      toSearchableText(l.learning).includes(term) || 
+      toSearchableText(l.theme).includes(term) ||
+      toSearchableText(l.title).includes(term) ||
+      toSearchableText(l.sub_theme).includes(term) ||
+      toSearchableText(l.classification).includes(term);
+
+    const matchesClassification = filterClassification === 'all' || safeText(l.classification) === filterClassification;
     return matchesSearch && matchesClassification;
   });
 
+  const AdminDataErrorCard = ({ title, error, action }: { title: string, error: any, action?: string }) => (
+    <div className="p-5 bg-rose-50 border border-rose-100 rounded-2xl flex gap-4">
+      <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+        <AlertCircle className="w-5 h-5 text-rose-600" />
+      </div>
+      <div className="flex-1">
+        <p className="text-xs font-black text-rose-900 uppercase tracking-widest">{title}</p>
+        <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+        <div className="flex flex-wrap gap-4 mt-2">
+          {error.code && <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">Code: {error.code}</p>}
+          {error.path && <p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest">Path: {error.path}</p>}
+        </div>
+
+        {/* Diagnostic Metadata Panel */}
+        <div className="mt-4 p-3 bg-white/40 rounded-xl border border-rose-200/30 grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none mb-1">UID</p>
+              <p className="text-[10px] font-mono text-rose-800 truncate">{user?.uid || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none mb-1">System Role</p>
+              <p className="text-[10px] font-bold text-rose-800">{profile?.system_role || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none mb-1">Status</p>
+              <p className="text-[10px] font-bold text-rose-800">{profile?.status || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-black text-rose-400 uppercase tracking-widest leading-none mb-1">Auth Loading</p>
+              <p className="text-[10px] font-bold text-rose-800">{authLoading ? 'TRUE' : 'FALSE'}</p>
+            </div>
+        </div>
+
+        {action && (
+          <div className="mt-3 p-3 bg-white/50 rounded-xl border border-rose-200/50">
+            <p className="text-[10px] font-black text-rose-800 uppercase tracking-widest mb-1">Recommended Action:</p>
+            <p className="text-xs text-rose-700 font-bold">{action}</p>
+          </div>
+        )}
+      </div>
+      <button 
+        onClick={() => setSectionErrors(prev => {
+          const next = { ...prev };
+          delete next[error.path || ''];
+          return next;
+        })}
+        className="text-rose-300 hover:text-rose-500 transition-colors shrink-0"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>
+  );
+
+  // Group identical errors (like multiple permission-denied)
+  const renderErrors = () => {
+    if (Object.entries(sectionErrors).length === 0) return null;
+
+    const groupedErrors: Record<string, {
+      message: string;
+      code?: string;
+      paths: string[];
+    }> = {};
+
+    Object.entries(sectionErrors).forEach(([path, err]) => {
+      const errorKey = `${err.code}-${err.message}`;
+      if (!groupedErrors[errorKey]) {
+        groupedErrors[errorKey] = {
+          message: err.message,
+          code: err.code,
+          paths: [path]
+        };
+      } else {
+        groupedErrors[errorKey].paths.push(path);
+      }
+    });
+
+    return (
+      <div className="grid gap-3 mb-8">
+        {Object.values(groupedErrors).map((error, idx) => (
+          <AdminDataErrorCard
+            key={idx}
+            title={error.paths.length > 1 ? `Falha ao carregar múltiplas coleções (${error.paths.length})` : `Falha ao carregar ${error.paths[0]}`}
+            error={{
+              message: error.message,
+              code: error.code,
+              path: error.paths.join(', ')
+            }}
+            action={
+              error.code === "permission-denied"
+                ? "Verifique as regras do Firestore ou se o seu sistema_role é 'owner' ou 'admin'. O acesso direto via client está restrito."
+                : error.message.includes("index")
+                  ? "Crie o índice solicitado pelo Firestore clicando no link disponível no log do console."
+                  : "Verifique se a coleção existe e se o usuário tem permissão administrativa ativa."
+            }
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8 pb-32">
+      {/* Global Errors Notification */}
+      {renderErrors()}
+
       {/* Dynamic Sync Indicator */}
       {loading && (
         <div className="fixed top-0 left-0 right-0 z-[100] h-1.5 bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
@@ -900,6 +1137,11 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
               <MindflowContextsSection />
             )}
 
+            {/* GUARDRAILS REDIRECT */}
+            {activeTab === 'guardrails' && (
+              <MindflowGuardrailsSection />
+            )}
+
             {/* IMPORT JOBS */}
             {activeTab === 'import' && (
               <div className="space-y-8">
@@ -1038,7 +1280,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
                                      </div>
                                      <div>
                                         <p className="text-xl font-black text-zinc-900">Google Gemini</p>
-                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: {GEMINI_MODEL}</p>
+                                        <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest uppercase">Model: Auto</p>
                                      </div>
                                   </div>
                                   <div className={cn(

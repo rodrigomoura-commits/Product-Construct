@@ -39,6 +39,7 @@ import {
   MindflowLearning 
 } from '../../types';
 import { cn, formatDate } from '../../lib/utils';
+import { safeText } from '../../lib/safeText';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { detectMindflowConflicts, resolveMindflowConflictGroup } from '../../lib/mindflowConflicts';
@@ -51,9 +52,20 @@ function LearningDetailCard({ id }: { id: string }) {
     const fetchLearning = async () => {
       try {
         const snap = await getDoc(doc(db, 'mindflow_learnings', id));
-        if (snap.exists()) setLearning({ id: snap.id, ...snap.data() } as MindflowLearning);
-      } catch (error) {
-        handleFirestoreError(error, OperationType.GET, `mindflow_learnings/${id}`);
+        if (snap.exists()) {
+          const raw = snap.data();
+          setLearning({ 
+            id: snap.id, 
+            ...raw,
+            learning: safeText(raw.learning),
+            theme: safeText(raw.theme),
+            classification: safeText(raw.classification) as any,
+            learning_type: safeText(raw.learning_type) as any
+          } as MindflowLearning);
+        }
+      } catch (error: any) {
+        console.error("[LearningDetailCard] Failed to fetch learning:", error);
+        setLearning(null);
       } finally {
         setLoading(false);
       }
@@ -99,6 +111,7 @@ export default function MindflowConflictsSection() {
   const [isResolutionModalOpen, setIsResolutionModalOpen] = useState(false);
   const [resolutionAction, setResolutionAction] = useState<any>(null);
   const [resolutionNotes, setResolutionNotes] = useState('');
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
 
   useEffect(() => {
     const qGroups = query(
@@ -109,11 +122,25 @@ export default function MindflowConflictsSection() {
     );
     
     const unsubGroups = onSnapshot(qGroups, (snap) => {
-      setGroups(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowConflictGroup)));
+      setGroups(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          title: safeText(raw.title),
+          summary: safeText(raw.summary),
+          group_reason: safeText(raw.group_reason)
+        } as MindflowConflictGroup;
+      }));
       setLoading(false);
     }, (error) => {
+      console.error("[ConflictsSection] Failed to load conflict groups:", error);
       setLoading(false);
-      handleFirestoreError(error, OperationType.LIST, 'mindflow_conflict_groups');
+      setError({
+        message: error?.message || String(error),
+        code: (error as any)?.code,
+        path: 'mindflow_conflict_groups'
+      });
     });
 
     const qConflicts = query(
@@ -124,8 +151,23 @@ export default function MindflowConflictsSection() {
     );
 
     const unsubConflicts = onSnapshot(qConflicts, (snap) => {
-      setConflicts(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowConflict)));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'mindflow_conflicts'));
+      setConflicts(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          title: safeText(raw.title),
+          summary: safeText(raw.summary)
+        } as MindflowConflict;
+      }));
+    }, (error) => {
+      console.error("[ConflictsSection] Failed to load conflicts:", error);
+      setError({
+        message: error?.message || String(error),
+        code: (error as any)?.code,
+        path: 'mindflow_conflicts'
+      });
+    });
 
     return () => {
       unsubGroups();
@@ -180,6 +222,24 @@ export default function MindflowConflictsSection() {
 
   return (
     <div className="space-y-8">
+      {error && (
+        <div className="p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique se o usuário tem privilégios administrativos.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Progress Bar Container */}
       {(loading || isDetecting) && (
         <motion.div 

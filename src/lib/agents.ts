@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, setDoc, getDoc } from 'firebase/firestore';
 import { db, cleanFirestoreData } from './firebase';
 import { Agent, AgentInstructionVersion, StageKey } from '../types';
-import { GEMINI_MODEL } from '../config/ai';
+import { GEMINI_MODEL, GEMINI_MODELS } from '../config/ai';
 
 /**
  * AGENT SERVICE
@@ -83,7 +83,7 @@ export async function seedDefaultAgents(userId: string) {
        primary_discipline: 'Product Management',
        status: 'active',
        primary_stage_id: 'sense',
-       default_model: GEMINI_MODEL,
+       default_model: GEMINI_MODELS[0].value,
        temperature: 0.3,
        memory_enabled: true,
        mindflow_enabled: true,

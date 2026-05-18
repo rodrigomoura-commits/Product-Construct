@@ -1,416 +1,387 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // -------------------------------------------------------------------------
-    // Primitive Definitions
-    // -------------------------------------------------------------------------
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isGlobalAdmin() {
-      return isSignedIn() && (
-        request.auth.uid == 'chlikOhHngN9QE9y9x4M3XJCa9E2' ||
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'celular@rodrigomoura.net') ||
-        (request.auth.token.email != null && request.auth.token.email == 'celular@rodrigomoura.net')
-      );
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // -------------------------------------------------------------------------
-    // 0. Global Safety Net & Admin Bypass
-    // -------------------------------------------------------------------------
-    match /{document=**} {
-      allow read, write: if isSignedIn() && (
-        request.auth.uid == 'chlikOhHngN9QE9y9x4M3XJCa9E2' ||
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'celular@rodrigomoura.net')
-      );
-    }
-
-    function isEmailVerified() {
-      return isSignedIn() && (request.auth.token.email_verified == true || isGlobalAdmin());
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // Role lookups
-    function hasRole(role) {
-      return exists(/databases/$(database)/documents/user_roles/$(request.auth.uid + '_' + role));
-    }
-    
     function isOwner() {
-      return isSignedIn() && (
-        isGlobalAdmin() ||
-        (isEmailVerified() && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid + '_owner')))
-      );
+      return isSignedIn()
+        && (
+          userDoc().data.system_role == "owner"
+          || userDoc().data.role == "owner"
+          || userDoc().data.email == "rodrigo.moura@hotmart.com"
+          || request.auth.token.email == "rodrigo.moura@hotmart.com"
+        );
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        isGlobalAdmin() ||
-        isOwner() ||
-        (isEmailVerified() && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid + '_admin')))
-      );
+      return isSignedIn()
+        && (
+          isOwner()
+          || userDoc().data.system_role == "admin"
+          || userDoc().data.role == "admin"
+        );
     }
 
-    // Product membership check
+    function isOwnerOrAdmin() {
+      return isOwner() || isAdmin();
+    }
+
+    function hasUserProductAccess(productId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/user_product_access/$(request.auth.uid)/products/$(productId))
+        && get(/databases/$(database)/documents/user_product_access/$(request.auth.uid)/products/$(productId)).data.status == "active";
+    }
+
+    function getUserProductRole(productId) {
+      return get(/databases/$(database)/documents/user_product_access/$(request.auth.uid)/products/$(productId)).data.role;
+    }
+
     function isProductParticipant(productId) {
       return isSignedIn() && (
-        isGlobalAdmin() ||
-        (resource != null && resource.data.owner_id == request.auth.uid) ||
+        isOwnerOrAdmin() ||
+        hasUserProductAccess(productId) ||
         get(/databases/$(database)/documents/products/$(productId)).data.owner_id == request.auth.uid
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Validation Helpers
-    // -------------------------------------------------------------------------
-    function isValidProfile(data) {
-      return data.keys().hasAll(['display_name', 'email']) &&
-             data.display_name is string && data.display_name.size() > 0 && data.display_name.size() <= 100 &&
-             data.email is string && (data.email == request.auth.token.email || isGlobalAdmin());
+    function canViewProduct(productId) {
+      return isProductParticipant(productId);
     }
 
-    function isValidProduct(data) {
-      return data.keys().hasAll(['name', 'owner_id']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
-             (data.owner_id == request.auth.uid || isGlobalAdmin());
+    function canUseTona(productId) {
+      return isOwnerOrAdmin()
+        || (
+          hasUserProductAccess(productId)
+          && getUserProductRole(productId) in ["owner", "editor", "commenter"]
+        );
     }
 
-    function isValidMemory(data) {
-      return data.keys().hasAll(['type', 'title', 'content', 'status']) &&
-             data.title is string && data.title.size() <= 200 &&
-             data.content is string && data.content.size() <= 50000;
-    }
-
-    function isValidConversationMemory(data) {
-      return data.keys().hasAll(['product_id', 'user_id', 'status']) &&
-             data.product_id is string && data.user_id is string &&
-             data.status in ['active', 'paused', 'resolved', 'archived'];
-    }
-
-    function isValidAgent(data) {
-      return data.keys().hasAll(['name', 'status']) &&
-             data.name is string && data.name.size() > 0;
-    }
-
-    function isValidAgentInstruction(data, isUpdate) {
-      return (isUpdate || data.keys().hasAll(['agent_id', 'status'])) &&
-             (data.get('agent_id', '') is string) &&
-             (data.get('status', 'draft') is string);
-    }
-
-    function isValidMindflowLearning(data) {
-      return data.keys().hasAll(['learning', 'is_active']) &&
-             data.learning is string && data.learning.size() > 0 &&
-             data.is_active is bool;
-    }
-
-    function isValidReasoning(data) {
-      return data.keys().hasAll(['reasoning_type', 'title', 'reasoning', 'status']) &&
-             data.title is string && data.title.size() <= 200 &&
-             data.reasoning is string && data.reasoning.size() <= 50000;
-    }
-
-    function isValidUserMemory(data) {
-      return data.keys().hasAll(['user_id', 'user_message', 'status']) &&
-             data.user_id == request.auth.uid &&
-             (data.get('user_email', '') == '' || data.user_email == request.auth.token.email || isGlobalAdmin()) &&
-             data.user_message is string && data.user_message.size() > 0 && data.user_message.size() <= 10000;
-    }
-
-    // -------------------------------------------------------------------------
-    // Collection Matches
-    // -------------------------------------------------------------------------
-
-    // 1. Profiles
-    match /profiles/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isGlobalAdmin());
-      allow list: if isGlobalAdmin() || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidProfile(incoming());
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidProfile(incoming()) &&
-                    incoming().diff(existing()).affectedKeys().hasOnly(['display_name', 'avatar_url', 'updated_at']);
-    }
-
-    // 2. User Roles (Crucial for RBAC)
-    match /user_roles/{roleId} {
-      allow read: if isSignedIn() && (isGlobalAdmin() || isAdmin() || (resource != null && resource.data.user_id == request.auth.uid));
-      allow create: if isSignedIn() && (
-        isGlobalAdmin() || isOwner() ||
-        (request.auth.token.email == 'celular@rodrigomoura.net' && roleId == request.auth.uid + '_owner') ||
-        (request.auth.token.email == 'celular@rodrigomoura.net' && incoming().user_id == request.auth.uid)
+    function canCommentProduct(productId) {
+      return isOwnerOrAdmin() || (
+        hasUserProductAccess(productId) && 
+        getUserProductRole(productId) in ["owner", "editor", "commenter"]
       );
-      allow update, delete: if isOwner();
     }
 
-    // 3. Products
-    match /products/{productId} {
-      allow get: if isProductParticipant(productId);
-      allow list: if isSignedIn() && (isGlobalAdmin() || isAdmin() || (resource.data.owner_id == request.auth.uid));
-      allow create: if isSignedIn() && isEmailVerified() && isValidProduct(incoming());
-      allow update: if isProductParticipant(productId) && (
-        (incoming().owner_id == existing().owner_id && isValidProduct(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'product_type', 'objective', 'status', 'current_stage', 'progress', 'quality_score', 'updated_at'])) ||
-        isOwner() || isAdmin()
+    function canEditProduct(productId) {
+      return isOwnerOrAdmin() || (
+        hasUserProductAccess(productId) && 
+        getUserProductRole(productId) in ["owner", "editor"]
       );
-      allow delete: if isOwner() || (isSignedIn() && existing().owner_id == request.auth.uid);
-
-      // Sub-collections under products
-      match /stages/{stageId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /fields/{fieldId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /artifacts/{artifactId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /decisions/{decisionId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /memories/{memoryId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /documents/{documentId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /history/{eventId} {
-        allow read: if isProductParticipant(productId);
-        allow write: if isProductParticipant(productId);
-      }
-      match /conversation_memory/{userId} {
-        allow read: if isProductParticipant(productId) && (request.auth.uid == userId || isAdmin());
-        allow write: if isProductParticipant(productId) && (request.auth.uid == userId) && isValidConversationMemory(incoming());
-      }
     }
 
-    // 4. Global Memories
-    match /memories/{memoryId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    function canManageProductAccess(productId) {
+      return isOwnerOrAdmin() || (
+        hasUserProductAccess(productId) && 
+        getUserProductRole(productId) == "owner"
+      );
     }
 
-    // 5. Agents & Flows
-    match /agents/{agentId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
-    
-    match /agent_instruction_versions/{versionId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin() && isValidAgentInstruction(incoming(), false);
-      allow update: if isAdmin() && isValidAgentInstruction(incoming(), true);
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isOwnerOrAdmin();
+
+      allow create: if isSignedIn() && isSelf(userId);
+
+      allow update: if
+        isSelf(userId)
+        && !("system_role" in request.resource.data.diff(resource.data).changedKeys())
+        && !("status" in request.resource.data.diff(resource.data).changedKeys());
+
+      allow update: if isOwner();
+
+      allow update: if
+        isOwnerOrAdmin()
+        && resource.data.system_role == "user"
+        && request.resource.data.system_role == resource.data.system_role;
+
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    match /user_invites/{inviteId} {
+      allow read: if isOwnerOrAdmin();
+
+      allow create: if isOwnerOrAdmin();
+
+      allow update: if isOwnerOrAdmin();
+
       allow delete: if isOwner();
     }
 
-    match /agent_flow_bindings/{bindingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    match /audit_logs/{logId} {
+      allow read: if isOwnerOrAdmin();
+
+      allow create: if isOwnerOrAdmin();
+
+      allow update, delete: if false;
     }
 
-    match /agent_test_runs/{runId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    match /user_product_access/{userId}/products/{productId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isOwnerOrAdmin());
+      allow create, update, delete: if isOwnerOrAdmin() || isSelf(userId);
     }
 
-    // 6. Mindflow Neural Layer
+    match /user_product_access/{userId} {
+      allow read, delete: if isOwnerOrAdmin() || isSelf(userId);
+      allow create, update: if isOwnerOrAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if canViewProduct(productId);
+      allow create: if isSignedIn();
+      allow update: if canEditProduct(productId);
+      allow delete: if canManageProductAccess(productId);
+
+      match /stages/{stageId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /fields/{fieldId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /artifacts/{artifactId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /decisions/{decisionId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /memories/{memoryId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /documents/{documentId} {
+        allow read: if canViewProduct(productId);
+        allow create, update: if canEditProduct(productId);
+        allow delete: if canManageProductAccess(productId);
+      }
+
+      match /history/{eventId} {
+        allow read: if canViewProduct(productId);
+        allow create: if canCommentProduct(productId);
+        allow update, delete: if false;
+      }
+
+      match /messages/{messageId} {
+        allow read: if canViewProduct(productId);
+        allow create: if canUseTona(productId);
+        allow update, delete: if canEditProduct(productId);
+      }
+
+      match /conversation_memory/{userId} {
+        allow read: if canViewProduct(productId) && (request.auth.uid == userId || isOwnerOrAdmin());
+        allow write: if canCommentProduct(productId) && request.auth.uid == userId;
+      }
+
+      match /collaborators/{collaboratorId} {
+        allow read: if canViewProduct(productId);
+        allow create, update, delete: if canManageProductAccess(productId);
+      }
+
+      match /invites/{inviteId} {
+        allow read, create, update, delete: if canManageProductAccess(productId);
+      }
+      
+      // Fallback for any other sub-collection
+      match /{subCollection=**}/{docId} {
+        allow read: if canViewProduct(productId);
+        allow write: if canEditProduct(productId);
+      }
+    }
+
+    // MINDFLOW ADMINISTRATIVE COLLECTIONS
+    match /mindflow_conflict_groups/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+      match /{subPath=**} {
+        allow read, write: if isOwnerOrAdmin();
+      }
+    }
+
     match /mindflow_learnings/{learningId} {
       allow read: if isSignedIn();
-      allow create: if (isSignedIn() && isValidMindflowLearning(incoming())) || isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /mindflow_learning_relationships/{relId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /mindflow_learning_candidates/{candidateId} {
-      allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow update, delete: if isOwnerOrAdmin();
+      match /{subPath=**} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update, delete: if isOwnerOrAdmin();
+      }
     }
 
-    match /mindflow_retrieval_logs/{logId} {
-      allow read: if isSignedIn();
+    match /mindflow_learning_candidates/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+      match /{subPath=**} {
+        allow read, write: if isOwnerOrAdmin();
+      }
+    }
+
+    match /mindflow_import_history/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_behavioral_profiles/{userId} {
+      allow read, write: if isOwnerOrAdmin() || isSelf(userId);
+    }
+
+    match /mindflow_behavioral_signals/{signalId} {
+      allow read: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if isOwnerOrAdmin() || (isSignedIn() && request.resource.data.user_id == request.auth.uid);
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_behavioral_biometrics/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_cognitive_traces/{traceId} {
+      allow read: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
       allow create: if isSignedIn();
-      allow delete: if isAdmin();
+      allow update: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_cognitive_trace_events/{eventId} {
+      allow read: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isOwnerOrAdmin();
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_runtime_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_sensory_trails/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_deep_reasonings/{docId} {
+      allow read, write: if isOwnerOrAdmin();
     }
 
     match /mindflow_reasonings/{reasoningId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow create, update, delete: if isOwnerOrAdmin();
     }
 
-    match /mindflow_memory_learning_links/{linkId} {
+    match /mindflow_reasoning_runs/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_conflicts/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOwnerOrAdmin();
     }
 
-    match /mindflow_learning_reasoning_links/{linkId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /mindflow_reasoning_runs/{runId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /mindflow_context_maps/{contextId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /mindflow_contexts/{contextId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /mindflow_user_memories/{memoryId} {
-      allow read: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidUserMemory(incoming()) && isValidId(memoryId);
-      allow update: if isSignedIn() && (existing().user_id == request.auth.uid || isAdmin()) && (
-        (incoming().diff(existing()).affectedKeys().hasOnly(['tona_response', 'metadata', 'updated_at', 'status', 'agent_id', 'stage_agent_id', 'specialist_agent_id', 'used_learning_ids', 'used_reasoning_ids', 'generated_learning_ids'])) ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /mindflow_runtime_logs/{logId} {
-      allow read: if isAdmin();
+    match /mindflow_retrieval_logs/{logId} {
       allow create: if isSignedIn();
-      allow delete: if isOwner();
+      allow read, update, delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_import_jobs/{docId} {
+      allow read, write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_context_maps/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_learning_relationships/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isOwnerOrAdmin();
+    }
+
+    // MULTI-USER MINDFLOW COLLECTIONS
+    match /mindflow_user_memories/{userId}/memories/{memoryId} {
+      allow read, create, update: if isOwnerOrAdmin() || isSelf(userId);
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_product_memories/{productId}/memories/{memoryId} {
+      allow read: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow create: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_product_synthesis/{productId}/items/{itemId} {
+      allow read: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow create, update: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_interactions/{productId}/events/{eventId} {
+      allow read: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow create: if isOwnerOrAdmin() || isProductParticipant(productId);
+      allow update, delete: if false;
     }
 
     match /mindflow_logs/{logId} {
-      allow read: if isAdmin();
       allow create: if isSignedIn();
-      allow delete: if isOwner();
-    }
-    
-    match /mindflow_conflicts/{conflictId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
-    
-    match /mindflow_conflict_groups/{groupId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
-    
-    match /mindflow_conflict_resolution_logs/{logId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
+      allow read, update, delete: if isOwnerOrAdmin();
     }
 
-    match /mindflow_loops/{loopId} {
+    match /mindflow_guardrails/{guardrailId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow create, update, delete: if isOwnerOrAdmin();
     }
 
-    // 7. Tona Architecture & Journey
-    match /tona_core_personality/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /product_journey_stages/{stageId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /user_behavior_profiles/{profileId} {
-      allow read: if isSignedIn() && (resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid || isAdmin());
+    match /deleted_users/{email} {
+      allow read, write: if isOwnerOrAdmin();
     }
 
     match /stage_agent_configs/{configId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isOwnerOrAdmin();
+    }
+    match /scheduler_jobs/{jobId} {
+      allow read: if isOwnerOrAdmin();
+      allow create: if isOwner();
+      allow update: if isOwner();
+      allow delete: if isOwner();
     }
 
-    match /stage_specialist_bindings/{bindingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+    match /scheduler_runs/{runId} {
+      allow read: if isOwnerOrAdmin();
+      allow create: if isOwnerOrAdmin();
+      allow update: if isOwnerOrAdmin();
+      allow delete: if isOwner();
     }
 
-    match /product_stage_maturity_snapshots/{snapshotId} {
-      allow read: if isSignedIn() && (isProductParticipant(resource.data.product_id) || isAdmin());
-      allow write: if isSignedIn() && (isProductParticipant(incoming().product_id) || isAdmin());
-    }
-
-    match /mindflow_import_jobs/{jobId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.created_by == request.auth.uid || isAdmin());
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (existing().created_by == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    match /mindflow_import_job_events/{eventId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow delete: if isAdmin();
-    }
-
-    match /mindflow_behavioral_profiles/{profileId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid || isAdmin());
-    }
-
-    match /mindflow_behavioral_signals/{signalId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn() && (incoming().user_id == request.auth.uid || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    match /mindflow_cognitive_traces/{traceId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.user_id == request.auth.uid || isAdmin());
-      allow write: if isSignedIn() && (incoming().user_id == request.auth.uid || isAdmin());
-    }
-
-    match /mindflow_cognitive_trace_events/{eventId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow delete: if isAdmin();
+    match /scheduler_audit_logs/{logId} {
+      allow read: if isOwnerOrAdmin();
+      allow create: if isOwnerOrAdmin();
+      allow update, delete: if false;
     }
 
     match /scheduled_actions/{actionId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // 8. Tona Personality Module
-    match /tona_personality_base/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /tona_user_personalities/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-    }
-
-    match /tona_personality_learning_events/{eventId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-      allow delete: if isAdmin();
+      allow read: if isOwnerOrAdmin();
+      allow create: if isOwnerOrAdmin();
+      allow update: if isOwnerOrAdmin();
+      allow delete: if isOwner();
     }
   }
 }

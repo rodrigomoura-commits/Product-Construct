@@ -4,12 +4,13 @@ import {
   ChevronRight, ArrowRight, Zap, Target, 
   Brain, User, Clock, AlertTriangle, 
   CheckCircle2, Info, MessageSquare, 
-  FileSearch, Eye, Database, Code, ShieldCheck
+  FileSearch, Eye, Database, Code, ShieldCheck, XCircle
 } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MindflowCognitiveTrace, MindflowCognitiveTraceEvent, AdminCtx } from '../../types';
 import { cn, formatDate } from '../../lib/utils';
+import { safeText } from '../../lib/safeText';
 
 interface MindflowTraceSectionProps {
   ctx: AdminCtx;
@@ -18,6 +19,7 @@ interface MindflowTraceSectionProps {
 export default function MindflowTraceSection({ ctx }: MindflowTraceSectionProps) {
   const [traces, setTraces] = useState<MindflowCognitiveTrace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [events, setEvents] = useState<MindflowCognitiveTraceEvent[]>([]);
 
@@ -25,10 +27,22 @@ export default function MindflowTraceSection({ ctx }: MindflowTraceSectionProps)
     setLoading(true);
     const q = query(collection(db, 'mindflow_cognitive_traces'), orderBy('created_at', 'desc'), limit(50));
     const unsub = onSnapshot(q, (snap) => {
-      setTraces(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowCognitiveTrace)));
+      setTraces(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          response_strategy: safeText(raw.response_strategy)
+        } as MindflowCognitiveTrace;
+      }));
       setLoading(false);
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'mindflow_cognitive_traces');
+      console.error("[TraceSection] Failed to load traces:", err);
+      setError({
+        message: err?.message || String(err),
+        code: (err as any)?.code,
+        path: 'mindflow_cognitive_traces'
+      });
       setLoading(false);
     });
 
@@ -37,6 +51,23 @@ export default function MindflowTraceSection({ ctx }: MindflowTraceSectionProps)
 
   return (
     <div className="space-y-8">
+      {error && (
+        <div className="p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique permissões do Firestore.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="bg-zinc-900 rounded-[3rem] p-12 flex flex-col md:flex-row items-center gap-10 text-white overflow-hidden relative">
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 blur-[100px] rounded-full -mr-48 -mt-48" />

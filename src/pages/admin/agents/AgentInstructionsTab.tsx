@@ -10,7 +10,7 @@ import { db, auth } from '../../../lib/firebase';
 import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { cn } from '../../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
+import { GEMINI_MODELS } from '../../../config/ai';
 
 import { callGeminiProxy } from '../../../lib/geminiProxy';
 
@@ -220,8 +220,9 @@ export default function AgentInstructionsTab({ agents, selectedId, setSelectedId
       Responda APENAS com o texto melhorado para esta seção específica.`;
 
       const improvedText = await callGeminiProxy({
-        model: GEMINI_MODEL,
-        prompt: prompt
+        prompt: prompt,
+        useCase: "agent_instruction_improvement",
+        agentId: selectedId
       });
       if (improvedText) {
         setActiveBlocks({ ...activeBlocks, [activeBlockKey]: improvedText });

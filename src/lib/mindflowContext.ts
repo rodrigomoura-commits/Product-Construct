@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, getDoc } from 'firebase/firestore';
 import { db, cleanFirestoreData } from './firebase';
+import { safeText } from './safeText';
 import { 
   MindflowContext, 
   MindflowUserMemory,
@@ -10,7 +11,6 @@ import {
 
 import { getUserMemoriesCollection, getUserMemoryDoc } from './mindflowCollections';
 import { callGeminiProxy } from './geminiProxy';
-import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW CONTEXT MODULE
@@ -73,15 +73,15 @@ export async function storeUserMemory(data: {
 
     const docData: Omit<MindflowUserMemory, 'id'> = {
       user_id: data.userId,
-      user_identifier: data.userIdentifier || null,
+      user_identifier: safeText(data.userIdentifier),
       memory_date: new Date().toISOString().split('T')[0],
       memory_time: new Date().toLocaleTimeString(),
-      product: data.productId || 'Geral', // Usar productId ou fallback
-      context: classification.name || 'Geral',
-      sub_context: classification.intention || 'Conversa',
-      detected_intention: classification.intention || null,
-      user_message: data.userMessage,
-      tona_response: data.assistantMessage || null,
+      product: safeText(data.productId || 'Geral'), // Usar productId ou fallback
+      context: safeText(classification.name || 'Geral'),
+      sub_context: safeText(classification.intention || 'Conversa'),
+      detected_intention: safeText(classification.intention),
+      user_message: safeText(data.userMessage),
+      tona_response: safeText(data.assistantMessage),
       conversation_id: data.conversationId || null,
       product_id: data.productId || null,
       agent_id: data.agentId || null,
@@ -97,12 +97,12 @@ export async function storeUserMemory(data: {
       metadata: (classification as any).confidence_score === 'Baixa' ? { needs_review: true } : {}
     } as any;
 
-    const docRef = await addDoc(getUserMemoriesCollection(db), cleanFirestoreData(docData));
+    const docRef = await addDoc(getUserMemoriesCollection(db, data.userId), cleanFirestoreData(docData));
     return { id: docRef.id, ...classification };
   } catch (error) {
     console.error("Error storing interaction memory:", error);
     try {
-        await addDoc(getUserMemoriesCollection(db), cleanFirestoreData({
+        await addDoc(getUserMemoriesCollection(db, data.userId), cleanFirestoreData({
             user_id: data.userId,
             user_message: data.userMessage,
             memory_date: new Date().toISOString().split('T')[0],
@@ -127,7 +127,7 @@ export async function classifyInteractionContext(params: {
   stageId?: string;
   agentId?: string;
 }) {
-  const text = (params.userMessage + ' ' + (params.assistantMessage || '')).toLowerCase();
+  const text = (safeText(params.userMessage) + ' ' + safeText(params.assistantMessage)).toLowerCase();
   
   const rules = [
     { 
@@ -206,9 +206,9 @@ export async function classifyInteractionContext(params: {
   };
 }
 
-export async function extractLearningsFromMemories() {
+export async function extractLearningsFromMemories(userId: string) {
     const q = query(
-        getUserMemoriesCollection(db), 
+        getUserMemoriesCollection(db, userId), 
         where('status', '==', 'completed'),
         limit(50)
     );
@@ -240,8 +240,9 @@ export async function extractLearningsFromMemories() {
 
         try {
             const responseText = await callGeminiProxy({
-                model: GEMINI_MODEL,
                 prompt: prompt,
+                useCase: "extract_learnings",
+                agentId: "tona_orchestrator",
                 config: {
                     responseMimeType: "application/json"
                 }
@@ -253,9 +254,9 @@ export async function extractLearningsFromMemories() {
             for (const l of data.learnings) {
                 const learningData: Omit<MindflowLearning, 'id'> = {
                     learning_type: 'Adquirida',
-                    theme: l.theme || memory.context || 'Geral',
-                    learning: l.learning,
-                    classification: l.classification as any,
+                    theme: safeText(l.theme || memory.context || 'Geral'),
+                    learning: safeText(l.learning),
+                    classification: safeText(l.classification) as any,
                     source_type: 'memory',
                     source_id: memory.id,
                     scope_type: 'user' as MindflowScope,
@@ -263,8 +264,8 @@ export async function extractLearningsFromMemories() {
                     product_id: memory.product_id || null,
                     interaction_id: memory.id,
                     context_id: memory.context_id || null,
-                    product: memory.product || 'Geral',
-                    context: memory.context || 'Geral',
+                    product: safeText(memory.product || 'Geral'),
+                    context: safeText(memory.context || 'Geral'),
                     confidence_score: typeof l.confidence_score === 'number' ? l.confidence_score : 0.5,
                     relevance_score: 0.8,
                     quality_score: 0.8,
@@ -275,15 +276,15 @@ export async function extractLearningsFromMemories() {
                     learning_date: new Date().toISOString().split('T')[0],
                     created_at: serverTimestamp(),
                     updated_at: serverTimestamp(),
-                    metadata: { original_memory: memory.user_message }
+                    metadata: { original_memory: safeText(memory.user_message) }
                 };
 
                 const learnRef = await addDoc(collection(db, 'mindflow_learnings'), cleanFirestoreData(learningData));
                 generatedLearningIds.push(learnRef.id);
             }
 
-            if (memory.id) {
-                await updateDoc(getUserMemoryDoc(db, memory.id), {
+            if (memory.id && memory.user_id) {
+                await updateDoc(getUserMemoryDoc(db, memory.user_id, memory.id), {
                     generated_learning_ids: generatedLearningIds,
                     updated_at: serverTimestamp()
                 });

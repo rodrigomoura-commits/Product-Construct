@@ -42,14 +42,20 @@ export async function getBehavioralProfile(userId: string): Promise<MindflowBeha
  */
 export async function recordBehavioralSignal(signal: Omit<MindflowBehavioralSignal, 'id' | 'created_at'>) {
   try {
-    const docRef = await addDoc(collection(db, 'mindflow_behavioral_signals'), cleanFirestoreData({
+    const colRef = collection(db, 'mindflow_behavioral_signals');
+    const docRef = await addDoc(colRef, cleanFirestoreData({
       ...signal,
       created_at: serverTimestamp(),
       updated_at: serverTimestamp()
     }));
     return docRef.id;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, 'mindflow_behavioral_signals');
+  } catch (error: any) {
+    if (error.code === 'already-exists' || error.message?.includes('already exists')) {
+      console.warn("[MindflowBehavioral] Document already exists, ignoring:", error);
+      return null;
+    }
+    console.error("[MindflowBehavioral] Failed to record signal:", error);
+    return null;
   }
 }
 

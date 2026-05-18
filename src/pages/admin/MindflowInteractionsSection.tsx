@@ -5,7 +5,7 @@ import {
   Download, Upload, Check, AlertCircle, FileText,
   ChevronRight, Brain, Target, Zap, Clock, Users,
   BarChart3, Layout, ChevronDown, MessageSquare,
-  User, Eye, Sparkles, RefreshCw, Layers
+  User, Eye, Sparkles, RefreshCw, Layers, XCircle
 } from 'lucide-react';
 import { 
   collection, query, where, getDocs, addDoc, 
@@ -14,6 +14,7 @@ import {
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MindflowUserMemory, MindflowLearning } from '../../types';
 import { cn } from '../../lib/utils';
+import { safeText, toSearchableText } from '../../lib/safeText';
 import { toast } from 'sonner';
 
 export default function MindflowInteractionsSection() {
@@ -27,16 +28,17 @@ export default function MindflowInteractionsSection() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [userLearnings, setUserLearnings] = useState<MindflowLearning[]>([]);
   const [viewingUser, setViewingUser] = useState(false);
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
 
   // Filtragem local
   const filteredMemories = memories.filter(memory => {
     const matchesSearch = searchTerm === '' || 
-      (memory.user_identifier || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (memory.user_message || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (memory.tona_response || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (memory.product || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (memory.context || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (memory.detected_intention || '').toLowerCase().includes(searchTerm.toLowerCase());
+      toSearchableText(memory.user_identifier).includes(toSearchableText(searchTerm)) ||
+      toSearchableText(memory.user_message).includes(toSearchableText(searchTerm)) ||
+      toSearchableText(memory.tona_response).includes(toSearchableText(searchTerm)) ||
+      toSearchableText(memory.product).includes(toSearchableText(searchTerm)) ||
+      toSearchableText(memory.context).includes(toSearchableText(searchTerm)) ||
+      toSearchableText(memory.detected_intention).includes(toSearchableText(searchTerm));
     
     const matchesDate = dateFilter === '' || memory.memory_date === dateFilter;
     const matchesProduct = productFilter === '' || memory.product === productFilter;
@@ -75,9 +77,26 @@ export default function MindflowInteractionsSection() {
       }
 
       const snap = await getDocs(q);
-      setMemories(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowUserMemory)));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      setMemories(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          user_identifier: safeText(raw.user_identifier),
+          user_message: safeText(raw.user_message),
+          tona_response: safeText(raw.tona_response),
+          product: safeText(raw.product),
+          context: safeText(raw.context),
+          detected_intention: safeText(raw.detected_intention)
+        } as MindflowUserMemory;
+      }));
+    } catch (err: any) {
+      console.error("[InteractionsSection] Failed to load memories:", err);
+      setError({
+        message: err?.message || String(err),
+        code: err?.code,
+        path: path
+      });
     } finally {
       setLoading(false);
     }
@@ -92,9 +111,23 @@ export default function MindflowInteractionsSection() {
          where('is_active', '==', true)
       );
       const snap = await getDocs(q);
-      setUserLearnings(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning)));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      setUserLearnings(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          learning: safeText(raw.learning),
+          theme: safeText(raw.theme),
+          classification: safeText(raw.classification) as any
+        } as MindflowLearning;
+      }));
+    } catch (err: any) {
+      console.error("[InteractionsSection] Failed to load learnings:", err);
+      setError({
+        message: err?.message || String(err),
+        code: err?.code,
+        path: path
+      });
     }
   };
 
@@ -106,6 +139,23 @@ export default function MindflowInteractionsSection() {
 
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        <div className="p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertCircle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique privilégios administrativos no Firestore.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-zinc-900 tracking-tight">Interações & Memória por Usuário</h2>

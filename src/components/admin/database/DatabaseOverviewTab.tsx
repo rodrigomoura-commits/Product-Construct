@@ -4,7 +4,7 @@ import {
   ListTree, Download, History, Search, CheckCircle2, 
   AlertCircle, ArrowUpRight, ArrowDownRight, Clock, ArrowRight, AlertTriangle
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseOverviewTab() {

@@ -1,19 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, Search, Filter, MoreVertical, Edit2, 
-  Trash2, Archive, Copy, ExternalLink, TestTube,
-  Download, Upload, Check, AlertCircle, FileText,
-  ChevronRight, Brain, Target, Zap, Clock, Users,
-  BarChart3, Layout, ChevronDown, LucideIcon,
-  MessageSquare, Lightbulb, Sparkles, RefreshCw
-} from 'lucide-react';
-import { 
-  collection, query, where, getDocs, addDoc, 
-  serverTimestamp, updateDoc, doc, deleteDoc, orderBy, limit 
-} from 'firebase/firestore';
+import { Brain, Target, Zap, Clock, Users, BarChart3, Layout, LucideIcon, MessageSquare, Lightbulb, Sparkles, RefreshCw, XCircle, ChevronRight, Edit2, Plus, Search, Filter, AlertCircle, TestTube, ExternalLink } from 'lucide-react';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, deleteDoc, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MindflowContextMap } from '../../types';
 import { cn } from '../../lib/utils';
+import { safeText, toSearchableText } from '../../lib/safeText';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import { classifyInteractionContext } from '../../lib/mindflowContext';
@@ -25,6 +16,7 @@ export default function MindflowContextsSection() {
   const [seeding, setSeeding] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'create' | 'import' | 'test' | 'usage'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
   
   // Test State
   const [testMessage, setTestMessage] = useState('');
@@ -41,9 +33,23 @@ export default function MindflowContextsSection() {
     try {
       const q = query(collection(db, path), orderBy('order', 'asc'), limit(50));
       const snap = await getDocs(q);
-      setContexts(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowContextMap)));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      setContexts(snap.docs.map(d => {
+        const raw = d.data();
+        return { 
+          id: d.id, 
+          ...raw,
+          name: safeText(raw.name),
+          intention: safeText(raw.intention),
+          framework_key: safeText(raw.framework_key)
+        } as MindflowContextMap;
+      }));
+    } catch (err: any) {
+      console.error("[ContextsSection] Failed to load contexts:", err);
+      setError({
+        message: err?.message || String(err),
+        code: err?.code,
+        path: path
+      });
     } finally {
       setLoading(false);
     }
@@ -76,18 +82,35 @@ export default function MindflowContextsSection() {
   };
 
   const filteredContexts = contexts.filter(ctx => {
-    const name = ctx.name || '';
-    const intention = ctx.intention || '';
-    const frameworkKey = ctx.framework_key || '';
-    const term = searchTerm.toLowerCase();
+    const name = toSearchableText(ctx.name);
+    const intention = toSearchableText(ctx.intention);
+    const frameworkKey = toSearchableText(ctx.framework_key);
+    const term = toSearchableText(searchTerm);
     
-    return name.toLowerCase().includes(term) ||
-           intention.toLowerCase().includes(term) ||
-           frameworkKey.toLowerCase().includes(term);
+    return name.includes(term) ||
+           intention.includes(term) ||
+           frameworkKey.includes(term);
   });
 
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        <div className="p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertCircle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique se o usuário tem privilégios de administrador no Firestore.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-zinc-900 tracking-tight">Contextos do Mindflow</h2>

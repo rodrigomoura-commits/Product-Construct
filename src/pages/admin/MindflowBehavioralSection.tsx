@@ -4,12 +4,13 @@ import {
   ArrowUpCircle, Info, Settings2, ShieldCheck, 
   Search, Filter, ChevronRight, Activity, 
   MessageSquare, LayoutGrid, Clock, AlertTriangle,
-  FileSearch, UserCheck, Zap, MoreVertical
+  FileSearch, UserCheck, Zap, MoreVertical, XCircle
 } from 'lucide-react';
 import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { MindflowBehavioralProfile, MindflowBehavioralSignal, AdminCtx } from '../../types';
 import { cn, formatDate } from '../../lib/utils';
+import { safeText } from '../../lib/safeText';
 
 interface MindflowBehavioralSectionProps {
   ctx: AdminCtx;
@@ -21,6 +22,7 @@ export default function MindflowBehavioralSection({ ctx }: MindflowBehavioralSec
   const [loading, setLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<'profiles' | 'signals' | 'contexts'>('profiles');
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -29,20 +31,48 @@ export default function MindflowBehavioralSection({ ctx }: MindflowBehavioralSec
     if (activeSubTab === 'profiles') {
       const q = query(collection(db, 'mindflow_behavioral_profiles'), orderBy('updated_at', 'desc'), limit(50));
       const unsub = onSnapshot(q, (snap) => {
-        setProfiles(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowBehavioralProfile)));
+        setProfiles(snap.docs.map(d => {
+          const raw = d.data();
+          return { 
+            id: d.id, 
+            ...raw,
+            user_identifier: safeText(raw.user_identifier),
+            preferred_depth: safeText(raw.preferred_depth),
+            preferred_format: safeText(raw.preferred_format)
+          } as MindflowBehavioralProfile;
+        }));
         setLoading(false);
       }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_behavioral_profiles');
+        console.error("[BehavioralSection] Failed to load profiles:", err);
+        setError({
+          message: err?.message || String(err),
+          code: (err as any)?.code,
+          path: 'mindflow_behavioral_profiles'
+        });
         setLoading(false);
       });
       unsubs.push(unsub);
     } else if (activeSubTab === 'signals') {
       const q = query(collection(db, 'mindflow_behavioral_signals'), orderBy('created_at', 'desc'), limit(100));
       const unsub = onSnapshot(q, (snap) => {
-        setSignals(snap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowBehavioralSignal)));
+        setSignals(snap.docs.map(d => {
+          const raw = d.data();
+          return { 
+            id: d.id, 
+            ...raw,
+            signal_type: safeText(raw.signal_type),
+            signal_value: safeText(raw.signal_value),
+            evidence: safeText(raw.evidence)
+          } as MindflowBehavioralSignal;
+        }));
         setLoading(false);
       }, (err) => {
-        handleFirestoreError(err, OperationType.LIST, 'mindflow_behavioral_signals');
+        console.error("[BehavioralSection] Failed to load signals:", err);
+        setError({
+          message: err?.message || String(err),
+          code: (err as any)?.code,
+          path: 'mindflow_behavioral_signals'
+        });
         setLoading(false);
       });
       unsubs.push(unsub);
@@ -55,6 +85,24 @@ export default function MindflowBehavioralSection({ ctx }: MindflowBehavioralSec
 
   return (
     <div className="space-y-8">
+      {error && (
+        <div className="p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique as regras de segurança do Firestore para esta coleção.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Header Info */}
       <div className="bg-white border border-zinc-200 rounded-[3rem] p-12 flex flex-col md:flex-row items-center gap-10">
         <div className="w-24 h-24 bg-indigo-50 rounded-[2rem] flex items-center justify-center border border-indigo-100 shrink-0">

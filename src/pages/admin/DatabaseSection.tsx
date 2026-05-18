@@ -5,7 +5,7 @@ import {
   CheckCircle2, Info, ArrowRight, Download, RefreshCw,
   Layers, UserCheck, Key, Zap, ListTree
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import blueprintData from '../../../firebase-blueprint.json';
 

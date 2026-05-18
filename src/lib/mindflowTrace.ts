@@ -22,7 +22,7 @@ export async function createCognitiveTrace(data: Partial<MindflowCognitiveTrace>
     }));
     return docRef.id;
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, 'mindflow_cognitive_traces');
+    console.error("[MindflowTrace] Failed to create trace:", error);
     throw error;
   }
 }
@@ -39,7 +39,7 @@ export async function addTraceEvent(traceId: string, order: number, event: Omit<
       created_at: serverTimestamp()
     }));
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, 'mindflow_cognitive_trace_events');
+    console.error("[MindflowTrace] Failed to add trace event:", error);
   }
 }
 
@@ -55,6 +55,6 @@ export async function finalizeCognitiveTrace(traceId: string, finalData: Partial
       status: 'completed'
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, 'mindflow_cognitive_traces');
+    console.error("[MindflowTrace] Failed to finalize trace:", error);
   }
 }

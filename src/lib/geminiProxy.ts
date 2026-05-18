@@ -5,6 +5,10 @@
 export async function callGeminiProxy(params: {
   prompt: string;
   model?: string;
+  useCase?: string;
+  agentId?: string;
+  productId?: string;
+  stageId?: string;
   config?: any;
 }) {
   const response = await fetch('/api/mindflow/chat', {
@@ -39,7 +43,7 @@ export async function callGeminiProxy(params: {
  */
 export async function getLLMHealth() {
   try {
-    const response = await fetch('/api/admin/llm/health');
+    const response = await fetch('/api/integrations/gemini/health');
     return await response.json();
   } catch (error) {
     return {

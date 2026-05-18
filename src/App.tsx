@@ -10,6 +10,10 @@ const ProductWorkspace = lazy(() => import('./pages/ProductWorkspace'));
 const AdminConsole = lazy(() => import('./pages/AdminConsole'));
 const FirebaseDebug = lazy(() => import('./pages/FirebaseDebug'));
 const UserSettings = lazy(() => import('./pages/UserSettings'));
+const InviteAccept = lazy(() => import('./pages/InviteAccept'));
+const AcceptUserInvite = lazy(() => import('./pages/AcceptUserInvite'));
+
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode, adminOnly?: boolean }) {
   const { user, adminCtx, loading } = useAuth();
@@ -120,6 +124,9 @@ export default function App() {
                 <UserSettings />
               </ProtectedRoute>
             } />
+            <Route path="/invite/:token" element={<AcceptUserInvite />} />
+            <Route path="/invites/user/:token" element={<AcceptUserInvite />} />
+            <Route path="/invites/product/:token" element={<AcceptInvite />} />
             {/* Rotas legadas de Memória */}
             <Route path="/admin/memory" element={<Navigate to="/admin?section=mindflow" replace />} />
             <Route path="/admin/memoria" element={<Navigate to="/admin?section=mindflow" replace />} />

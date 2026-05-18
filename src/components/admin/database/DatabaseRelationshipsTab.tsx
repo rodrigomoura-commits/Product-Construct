@@ -4,7 +4,7 @@ import {
   Layers, Package, Brain, Bot, Users, Shield, 
   HelpCircle, Link2, GitBranch
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 interface DatabaseRelationshipsTabProps {

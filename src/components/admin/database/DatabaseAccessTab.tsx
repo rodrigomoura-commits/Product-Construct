@@ -5,7 +5,7 @@ import {
   Filter, MoreHorizontal, Mail, Calendar, Eye, UserX,
   ShieldCheck
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseAccessTab() {

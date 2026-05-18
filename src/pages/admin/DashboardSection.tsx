@@ -6,7 +6,7 @@ import {
   Activity, CheckCircle2, AlertCircle, Clock, RefreshCw, Loader2,
   ArrowRight
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 import { seedDefaultAgents } from '../../lib/agents';
 import { useAuth } from '../../contexts/AuthContext';

@@ -1,9 +1,9 @@
 import { callGeminiProxy } from './geminiProxy';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, orderBy, limit, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, cleanFirestoreData } from './firebase';
+import { db } from './firebase';
+import { cleanFirestoreData } from './firestoreSanitizer';
 import { Artifact, Product, StageKey } from '../types';
 import { ARTIFACT_CATALOG, getArtifactDefinition } from './artifactCatalog';
-import { GEMINI_MODEL } from '../config/ai';
 
 // removal of direct AI instantiation
 
@@ -171,7 +171,10 @@ async function generateArtifactContent({
 
   const content = await callGeminiProxy({
     prompt: prompt,
-    model: GEMINI_MODEL
+    useCase: "artifact_generation",
+    agentId: "tona_orchestrator",
+    productId,
+    stageId
   });
   
   return content || "";

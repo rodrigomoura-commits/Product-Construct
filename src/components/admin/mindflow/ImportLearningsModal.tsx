@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Upload, FileUp, CheckCircle2, AlertCircle, 
   Loader2, ChevronRight, LayoutGrid, Info, 

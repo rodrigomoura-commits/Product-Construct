@@ -1,5 +1,6 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, Timestamp } from 'firebase/firestore';
 import { db, cleanFirestoreData } from './firebase';
+import { safeText } from './safeText';
 import { 
   MindflowLearning, 
   MindflowReasoning, 
@@ -13,7 +14,6 @@ import {
   MindflowLearningReasoningLink
 } from '../types';
 import { callGeminiProxy } from './geminiProxy';
-import { GEMINI_MODEL } from '../config/ai';
 
 /**
  * MINDFLOW REASONING ENGINE (V2)
@@ -58,13 +58,37 @@ export async function runDailyMindflowReasoning(adminId: string) {
       where('is_active', '==', true),
       limit(200)
     ));
-    const baseLearnings = baseSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning));
+    const baseLearnings = baseSnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        learning: safeText(raw.learning),
+        theme: safeText(raw.theme)
+      } as MindflowLearning;
+    });
     
     const acquiredSnap = await getDocs(query(collection(db, 'mindflow_learnings'), where('learning_type', '==', 'Adquirida'), where('is_active', '==', true), limit(500)));
-    const acquiredLearnings = acquiredSnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowLearning));
+    const acquiredLearnings = acquiredSnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        learning: safeText(raw.learning),
+        theme: safeText(raw.theme)
+      } as MindflowLearning;
+    });
 
     const historySnap = await getDocs(query(collection(db, 'mindflow_user_memories'), orderBy('created_at', 'desc'), limit(300)));
-    const userMemories = historySnap.docs.map(d => ({ id: d.id, ...d.data() } as MindflowUserMemory));
+    const userMemories = historySnap.docs.map(d => {
+      const raw = d.data();
+      return { 
+        id: d.id, 
+        ...raw,
+        user_message: safeText(raw.user_message),
+        tona_response: safeText(raw.tona_response)
+      } as MindflowUserMemory;
+    });
 
     stats.total = baseLearnings.length + acquiredLearnings.length;
     stats.base = baseLearnings.length;
@@ -89,12 +113,12 @@ export async function runDailyMindflowReasoning(adminId: string) {
         reasoning_date: new Date().toISOString().split('T')[0],
         reasoning_type: cand.reasoning_type || 'hybrid_reasoning',
         inference_type: cand.inference_type || 'mixed',
-        title: cand.title || 'Insight Cognitivo',
-        reasoning: cand.reasoning || '',
-        summary: cand.summary || '',
-        why_it_matters: cand.why_it_matters || '',
-        theme: cand.theme || 'Geral',
-        classification: cand.classification || 'aprendizado',
+        title: safeText(cand.title || 'Insight Cognitivo'),
+        reasoning: safeText(cand.reasoning || ''),
+        summary: safeText(cand.summary || ''),
+        why_it_matters: safeText(cand.why_it_matters || ''),
+        theme: safeText(cand.theme || 'Geral'),
+        classification: safeText(cand.classification || 'aprendizado'),
         priority: cand.priority || 'medium',
         scope_type: cand.scope_type || 'global',
         conclusion_depth: cand.conclusion_depth || 'medium',
@@ -190,8 +214,9 @@ async function generateStrategicReasonings(base: MindflowLearning[]): Promise<Pa
 
   try {
     const responseText = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "reasoning",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -200,6 +225,11 @@ async function generateStrategicReasonings(base: MindflowLearning[]): Promise<Pa
     const data = JSON.parse(text);
     return Array.isArray(data) ? data.map(r => ({
       ...r,
+      title: safeText(r.title),
+      reasoning: safeText(r.reasoning),
+      summary: safeText(r.summary),
+      why_it_matters: safeText(r.why_it_matters),
+      theme: safeText(r.theme),
       reasoning_type: 'base_reasoning',
       scope_type: 'global',
       conclusion_depth: 'deep',
@@ -229,8 +259,9 @@ async function generateBehavioralReasonings(acquired: MindflowLearning[], base: 
 
   try {
     const responseText = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "reasoning",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -239,6 +270,10 @@ async function generateBehavioralReasonings(acquired: MindflowLearning[], base: 
     const data = JSON.parse(text);
     return Array.isArray(data) ? data.map(r => ({
       ...r,
+      title: safeText(r.title),
+      reasoning: safeText(r.reasoning),
+      summary: safeText(r.summary),
+      theme: safeText(r.theme),
       reasoning_type: 'behavioral_reasoning',
       scope_type: 'user',
       conclusion_depth: 'medium',
@@ -267,8 +302,9 @@ async function generateSystemicReasonings(memories: MindflowUserMemory[], learni
 
   try {
     const responseText = await callGeminiProxy({
-      model: GEMINI_MODEL,
       prompt: prompt,
+      useCase: "reasoning",
+      agentId: "tona_orchestrator",
       config: {
         responseMimeType: "application/json"
       }
@@ -277,6 +313,9 @@ async function generateSystemicReasonings(memories: MindflowUserMemory[], learni
     const data = JSON.parse(text);
     return Array.isArray(data) ? data.map(r => ({
       ...r,
+      title: safeText(r.title),
+      reasoning: safeText(r.reasoning),
+      summary: safeText(r.summary),
       reasoning_type: 'systemic_reasoning',
       scope_type: 'global',
       conclusion_depth: 'strategic',

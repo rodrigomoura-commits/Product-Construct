@@ -3,7 +3,7 @@ import {
   Users, Search, User, ChevronRight, Brain, 
   Target, Zap, Clock, MessageSquare, Filter,
   ShieldCheck, Fingerprint, Activity, TrendingUp,
-  Award, Star
+  Award, Star, AlertTriangle, XCircle
 } from 'lucide-react';
 import { 
   collection, query, getDocs, orderBy, 
@@ -11,7 +11,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { cn, formatDate } from '../../lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { safeText, toSearchableText } from '../../lib/safeText';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface MindflowUserStats {
   userId: string;
@@ -26,6 +27,7 @@ interface MindflowUserStats {
 export default function MindflowUsersSection() {
   const [users, setUsers] = useState<MindflowUserStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ message: string, code?: string, path?: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUser, setSelectedUser] = useState<MindflowUserStats | null>(null);
 
@@ -58,11 +60,11 @@ export default function MindflowUsersSection() {
         } else {
           userMap.set(userId, {
             userId,
-            userIdentifier: data.user_identifier || userId.slice(0, 8),
+            userIdentifier: safeText(data.user_identifier || userId.slice(0, 8)),
             totalInteractions: 1,
             totalMemories: 0, // Will fetch memories separately if needed
             lastInteractionAt: data.created_at,
-            topTheme: data.context || 'Geral',
+            topTheme: safeText(data.context || 'Geral'),
             confidenceScore: 0.85
           });
         }
@@ -82,20 +84,42 @@ export default function MindflowUsersSection() {
       });
 
       setUsers(Array.from(userMap.values()));
-    } catch (e) {
-      console.error(e);
+    } catch (err: any) {
+      console.error("[UsersSection] Failed to load users:", err);
+      setError({
+        message: err?.message || String(err),
+        code: err?.code,
+        path: 'mindflow_user_memories / mindflow_memories'
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const filteredUsers = users.filter(u => 
-    u.userIdentifier.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.userId.toLowerCase().includes(searchTerm.toLowerCase())
+    toSearchableText(u.userIdentifier).includes(toSearchableText(searchTerm)) ||
+    toSearchableText(u.userId).includes(toSearchableText(searchTerm))
   );
 
   return (
     <div className="grid grid-cols-12 gap-8">
+      {error && (
+        <div className="col-span-12 p-6 bg-rose-50 border border-rose-100 rounded-[2rem] flex gap-4">
+          <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+          </div>
+          <div>
+            <p className="text-xs font-black text-rose-900 uppercase tracking-widest">Falha de Dados: {error.path}</p>
+            <p className="text-sm text-rose-700 mt-1 font-medium italic">{error.message}</p>
+            {error.code === 'permission-denied' && (
+              <p className="text-[11px] text-rose-600 font-bold mt-2">Acesso Negado. Verifique privilégios administrativos no Firestore.</p>
+            )}
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-rose-300 hover:text-rose-500">
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+      )}
       {/* User List */}
       <div className={cn(
         "bg-white border border-zinc-100 rounded-[2.5rem] shadow-sm transition-all duration-500",

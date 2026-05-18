@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { X, FileText, Plus, Loader2, ChevronRight, Check, Sparkles, FilePlus, Copy, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { createArtifact } from '../../lib/artifacts';

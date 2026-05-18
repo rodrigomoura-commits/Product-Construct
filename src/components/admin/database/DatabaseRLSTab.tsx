@@ -4,7 +4,7 @@ import {
   Search, ExternalLink, ShieldAlert, Code, 
   Filter, ArrowRight, Eye, Shield, Zap
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseRLSTab() {

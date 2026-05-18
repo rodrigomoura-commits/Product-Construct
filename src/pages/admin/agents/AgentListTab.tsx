@@ -7,7 +7,7 @@ import {
   Sparkles, Brain, X, MoreVertical, Settings, ChevronDown, History, RefreshCw
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 import { 
   updateAgent, duplicateAgent, deleteAgentIfAllowed, canDeleteAgent, 

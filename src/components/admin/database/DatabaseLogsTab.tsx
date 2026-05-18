@@ -5,7 +5,7 @@ import {
   Clock, Database, Code, Zap, List, Braces,
   MoreVertical, RefreshCw, Layers, Activity
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseLogsTab() {

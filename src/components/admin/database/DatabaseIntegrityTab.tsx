@@ -5,7 +5,7 @@ import {
   Hash, Code, Layers, Zap, Info, Bug,
   FileSearch, Trash2, RefreshCw
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseIntegrityTab() {

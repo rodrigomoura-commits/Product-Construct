@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Product, ProductStage, StageField, StageKey } from '../../types';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { collection, query, where, onSnapshot, updateDoc, doc, serverTimestamp, setDoc, addDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../../lib/firebase';
 import { 
@@ -8,7 +9,7 @@ import {
   Plus, Search, FileEdit, Trash2, Loader2, Save
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 const STAGE_CONFIG: Record<StageKey, { fields: { key: string, label: string, description: string }[] }> = {
   sense: {
@@ -64,6 +65,7 @@ interface StageEditorProps {
 }
 
 export default function StageEditor({ stage, product }: StageEditorProps) {
+  const { permissions } = useWorkspace();
   const [fields, setFields] = useState<StageField[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingField, setSavingField] = useState<string | null>(null);
@@ -185,13 +187,17 @@ export default function StageEditor({ stage, product }: StageEditorProps) {
               <div className="relative">
                 <textarea
                   defaultValue={storedField?.value || ''}
+                  readOnly={!permissions?.canEditProduct}
                   onBlur={(e) => {
-                    if (e.target.value !== (storedField?.value || '')) {
+                    if (permissions?.canEditProduct && e.target.value !== (storedField?.value || '')) {
                       updateField(field.key, e.target.value);
                     }
                   }}
-                  placeholder={`Descreva aqui...`}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white focus:border-indigo-200 transition-all min-h-[100px] resize-none"
+                  placeholder={permissions?.canEditProduct ? `Descreva aqui...` : "Aguardando informações..."}
+                  className={cn(
+                    "w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:outline-none transition-all min-h-[100px] resize-none",
+                    permissions?.canEditProduct ? "focus:ring-2 focus:ring-indigo-500/20 focus:bg-white focus:border-indigo-200" : "cursor-default grayscale opacity-80"
+                  )}
                 />
                 {isSaving && (
                   <div className="absolute bottom-3 right-3 flex items-center gap-2 px-3 py-1 bg-white border border-slate-200 rounded-full shadow-sm animate-in fade-in zoom-in">
@@ -211,12 +217,18 @@ export default function StageEditor({ stage, product }: StageEditorProps) {
         })}
       </div>
 
-      <div className="pt-10 flex items-center justify-center">
+      {permissions?.canEditProduct && <div className="pt-10 flex items-center justify-center">
         <button className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group">
           <Trash2 className="w-4 h-4 text-slate-400 group-hover:text-red-500" />
           <span className="text-xs font-black uppercase tracking-widest text-slate-500 group-hover:text-red-600">Limpar esta etapa</span>
         </button>
-      </div>
+      </div>}
+
+      {!permissions?.canEditProduct && (
+        <div className="pt-10 border-t border-slate-100/50 text-center">
+           <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Acesso de visualização ativa</p>
+        </div>
+      )}
     </div>
   );
 }

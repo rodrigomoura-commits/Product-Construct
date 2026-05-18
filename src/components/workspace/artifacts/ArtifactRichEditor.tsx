@@ -16,7 +16,7 @@ import {
   artifactToEditorContent, 
   artifactHtmlToMarkdown 
 } from '../../../lib/artifactContentFormatter';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Save, Download, Sparkles, Check, Loader2, 
   ChevronRight, AlignLeft, Bold, Italic, List, 
@@ -32,6 +32,7 @@ import { ARTIFACT_CATALOG } from '../../../lib/artifactCatalog';
 import { ARTIFACT_TEMPLATES, calculateQuality } from './artifactUtils';
 import { exportArtifactToDocx } from '../../../lib/exportArtifactToDocx';
 import { deleteArtifact } from '../../../lib/artifacts';
+import { recordProductInteraction } from '../../../lib/productUserInteractions';
 import { cn } from '../../../lib/utils';
 import { toast } from 'sonner';
 
@@ -164,6 +165,16 @@ export default function ArtifactRichEditor({ artifact, product, open, mode = 'ed
       };
 
       await setDoc(doc(db, `products/${product.id}/artifacts`, artifact.id), payload, { merge: true });
+
+      // Record interaction
+      recordProductInteraction({
+        productId: product.id,
+        user,
+        profile: null,
+        role: 'editor',
+        section: 'artifacts',
+        event: 'artifact_created'
+      });
 
       setSaveStatus('saved');
       setIsDirty(false);

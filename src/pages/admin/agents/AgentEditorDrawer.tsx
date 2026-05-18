@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { db, auth } from '../../../lib/firebase';
-import { GEMINI_MODEL, GEMINI_MODELS } from '../../../config/ai';
+import { GEMINI_MODELS } from '../../../config/ai';
 import { 
   doc, updateDoc, collection, addDoc, 
   serverTimestamp, query, where, getDocs, 
@@ -120,8 +120,9 @@ export default function AgentEditorDrawer({ agent, onClose }: Props) {
       Responda apenas com o texto melhorado.`;
 
       const improvedText = await callGeminiProxy({
-        model: GEMINI_MODEL,
-        prompt: prompt
+        prompt: prompt,
+        useCase: "agent_instruction_improvement",
+        agentId: agent.id
       });
       if (improvedText) {
         setInstructions({ ...instructions, [activeBlock]: improvedText });

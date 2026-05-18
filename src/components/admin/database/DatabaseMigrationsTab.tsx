@@ -4,7 +4,7 @@ import {
   XCircle, Clock, Search, Filter, ArrowRight, Table,
   Code, Play, AlertCircle, RefreshCw, FileCode
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { cn } from '../../../lib/utils';
 
 export default function DatabaseMigrationsTab() {

@@ -113,7 +113,85 @@ export interface AdminCtx {
   isOwner: boolean;
   roles: UserRole[];
   userId: string;
+  email?: string;
+  displayName?: string;
 }
+
+export type ProductDocumentStatus =
+  | "uploading"
+  | "uploaded"
+  | "extracting_text"
+  | "processing_ai"
+  | "processed"
+  | "failed"
+  | "deleted";
+
+export interface ProductDocument {
+  id: string;
+  product_id: string;
+  organization_id?: string;
+  file_name: string;
+  file_extension: "pdf" | "docx" | "txt" | "md" | "csv";
+  mime_type: string;
+  size_bytes: number;
+  storage_path: string;
+  download_url?: string;
+  status: ProductDocumentStatus;
+  uploaded_by: string;
+  uploaded_by_email: string;
+  uploaded_by_name?: string;
+  stage_key?: "sense" | "shape" | "sketch" | "scope" | "ship" | "sense_plus";
+  linked_stage_keys?: string[];
+  source?: "conversation_attachment" | "documents_tab" | "empty_state";
+  auto_add_to_memory?: boolean;
+  extracted_text_preview?: string;
+  extracted_text_char_count?: number;
+  ai_summary?: string;
+  ai_status?: "not_started" | "processing" | "completed" | "failed";
+  extracted_items_count?: {
+    facts: number;
+    hypotheses: number;
+    evidence: number;
+    decisions: number;
+    risks: number;
+    gaps: number;
+    learnings: number;
+  };
+  error_message?: string;
+  created_at: any;
+  updated_at: any;
+  processed_at?: any;
+}
+
+export interface ProductDocumentExtraction {
+  id: string;
+  document_id: string;
+  product_id: string;
+  type: "fact" | "hypothesis" | "evidence" | "decision" | "risk" | "gap" | "learning" | "recommendation";
+  title: string;
+  content: string;
+  confidence: "low" | "medium" | "high";
+  stage_key?: string;
+  source_quote?: string;
+  source_location?: {
+    page?: number;
+    row?: number;
+    paragraph?: number;
+  };
+  should_add_to_memory: boolean;
+  memory_status: "pending" | "added" | "ignored";
+  created_at: any;
+}
+
+export type DiscussWithTonaPayload = {
+  source: "synthesis" | "memory" | "gap" | "risk" | "document" | "artifact" | "decision";
+  title: string;
+  content: string;
+  classification?: "fact" | "hypothesis" | "evidence" | "decision" | "risk" | "gap" | "learning";
+  stageKey?: string;
+  sourceId?: string;
+  suggestedPrompt?: string;
+};
 
 export interface Product {
   id: string;
@@ -121,16 +199,165 @@ export interface Product {
   description?: string;
   product_type?: string;
   objective?: string;
+  
+  // Ownership
   owner_id: string;
+  owner_ids?: string[]; // Materialized for queries
+  owner_email?: string;
+  owner_name?: string;
+  created_by: string;
+  created_by_email?: string;
+  created_by_name?: string;
+
+  // Collaboration
+  collaborator_ids?: string[];
+  collaborator_emails?: string[];
+  editor_ids?: string[];
+  commenter_ids?: string[];
+  viewer_ids?: string[];
+  
+  // Legacy Collaboration (backward compatibility)
+  participant_ids?: string[];
+  participant_emails?: string[];
+  participants?: Array<{
+    user_id: string;
+    email: string;
+    name?: string;
+    role: "owner" | "editor" | "commenter" | "viewer" | "participant";
+  }>;
+  
+  collaborators?: Array<{
+    user_id: string;
+    email: string;
+    name?: string;
+    role: "owner" | "editor" | "commenter" | "viewer";
+    status: "active" | "removed";
+    added_by: string;
+    added_at: any;
+  }>;
+
+  pending_invite_emails?: string[];
+  
   organization_id?: string;
   area?: string;
   team?: string;
   status: 'active' | 'paused' | 'archived' | 'completed';
   current_stage: string;
   progress: number;
+  overall_progress: number;
+  evolution_score: number;
   quality_score: number;
+  calculatedProgress?: number;
+  
+  visibility?: "private" | "shared" | "admin_visible";
   created_at: any;
   updated_at: any;
+  last_progress_sync_at?: any;
+}
+
+export interface StageClosureSynthesis {
+  product_id: string;
+  stage_id: string;
+  synthesis_type: "stage_closure";
+  status: "active" | "archived";
+
+  title: string;
+  executive_summary: string;
+
+  problem_understanding: string;
+  target_customer: string;
+  evidence_summary: string;
+  decision_summary: string;
+  open_questions_summary: string;
+
+  decisions: Array<{
+    title: string;
+    description: string;
+    confidence: number;
+    source_memory_ids?: string[];
+  }>;
+
+  hypotheses: Array<{
+    title: string;
+    description: string;
+    validation_needed?: string;
+    confidence: number;
+    source_memory_ids?: string[];
+  }>;
+
+  facts: Array<{
+    title: string;
+    description: string;
+    strength: "low" | "medium" | "high";
+    source_memory_ids?: string[];
+  }>;
+
+  risks: Array<{
+    title: string;
+    description: string;
+    mitigation_hint?: string;
+    severity: "low" | "medium" | "high";
+    source_memory_ids?: string[];
+  }>;
+
+  pending_points: Array<{
+    title: string;
+    description: string;
+    suggested_action?: string;
+    source_memory_ids?: string[];
+  }>;
+
+  recommended_next_step: {
+    title: string;
+    description: string;
+    next_stage: string;
+  };
+
+  right_panel?: {
+    strategic_synthesis_body: string;
+    next_step_hint: string;
+  };
+
+  needs_update?: boolean;
+  outdated_reason?: string;
+  outdated_at_ms?: number;
+
+  generated_by: "tona" | "user";
+  generated_at: any;
+  updated_at: any;
+}
+
+export interface ProductInvite {
+  id: string;
+  product_id: string;
+  product_name: string;
+  email: string;
+  role: "editor" | "commenter" | "viewer";
+  status: "pending" | "accepted" | "declined" | "revoked" | "expired";
+  invited_by: string;
+  invited_by_email: string;
+  invited_by_name?: string;
+  token: string;
+  expires_at: any;
+  accepted_by?: string;
+  accepted_at?: any;
+  created_at: any;
+  updated_at: any;
+}
+
+export interface ProductHistoryEvent {
+  id: string;
+  product_id: string;
+  type: "collaborator_invited" | "collaborator_joined" | "collaborator_removed" | "collaborator_role_changed" | "owner_changed" | "product_settings_updated" | "status_changed" | "stage_changed";
+  title: string;
+  summary: string;
+  actor_id: string;
+  actor_email: string;
+  actor_name?: string;
+  target_email?: string;
+  role?: string;
+  metadata?: any;
+  created_at: any;
 }
 
 export type StageKey = 'sense' | 'shape' | 'sketch' | 'scope' | 'ship' | 'sense_plus';
@@ -140,9 +367,16 @@ export interface ProductStage {
   product_id: string;
   stage_key: StageKey;
   name: string;
-  status: 'not_started' | 'in_progress' | 'incomplete' | 'ready_for_review' | 'approved' | 'reopened';
+  status: 'not_started' | 'in_progress' | 'incomplete' | 'ready_for_review' | 'approved' | 'reopened' | 'completed';
   progress: number;
+  understanding_summary?: string;
+  is_completed?: boolean;
   quality_score: number;
+  last_memory_update_at?: any;
+  last_field_update_at?: any;
+  last_document_update_at?: any;
+  last_decision_update_at?: any;
+  last_conversation_update_at?: any;
   created_at: any;
   updated_at: any;
 }
@@ -209,20 +443,128 @@ export interface Artifact {
   last_exported_at?: any;
 }
 
-export interface Decision {
+export type ProductDecisionType =
+  | "product"
+  | "business"
+  | "technology"
+  | "experience"
+  | "mvp_scope"
+  | "gtm"
+  | "data"
+  | "ai"
+  | "integration"
+  | "architecture"
+  | "process"
+  | "other";
+
+export type ProductDecisionDirection =
+  | "chosen"
+  | "rejected"
+  | "deferred"
+  | "changed"
+  | "open_for_review";
+
+export type ProductDecisionStatus =
+  | "draft"
+  | "active"
+  | "superseded"
+  | "reversed"
+  | "archived";
+
+export interface ProductDecision {
   id: string;
   product_id: string;
-  stage_id?: string;
+  organization_id?: string;
+
   title: string;
-  description: string;
-  reason: string;
-  evidence: string;
-  impact: string;
-  status: 'proposed' | 'in_discussion' | 'approved' | 'reverted' | 'obsolete';
-  author_id: string;
-  previous_decision_id?: string;
+  summary?: string;
+
+  decision_type: ProductDecisionType;
+  direction: ProductDecisionDirection;
+  status: ProductDecisionStatus;
+  stage_key?: StageKey;
+
+  decision_statement: string;
+  rationale: string;
+
+  alternatives_considered?: Array<{
+    option: string;
+    reason_not_chosen?: string;
+  }>;
+
+  impact_areas: string[];
+
+  implications?: string[];
+  risks?: string[];
+  assumptions?: string[];
+  
+  evidence?: Array<{
+    type: "document" | "conversation" | "metric" | "customer_quote" | "stakeholder_input" | "manual";
+    label: string;
+    source_id?: string;
+    quote?: string;
+    url?: string;
+  }>;
+
+  decided_by: string;
+  decided_by_email: string;
+  decided_by_name?: string;
+
+  participants?: Array<{
+    user_id?: string;
+    email: string;
+    name?: string;
+    role?: string;
+  }>;
+
+  related_document_ids?: string[];
+  related_artifact_ids?: string[];
+  related_memory_item_ids?: string[];
+  related_jira_keys?: string[];
+  related_links?: Array<{
+    label: string;
+    url: string;
+  }>;
+
+  supersedes_decision_id?: string;
+  superseded_by_decision_id?: string;
+
   created_at: any;
   updated_at: any;
+  decided_at?: any;
+}
+
+export type DecisionSuggestionSource =
+  | "contextual"
+  | "gap_based"
+  | "risk_based"
+  | "stage_based"
+  | "fallback";
+
+export interface DecisionSuggestion {
+  id: string;
+  label: string;
+  title: string;
+  description?: string;
+  decision_type: ProductDecisionType;
+  source: DecisionSuggestionSource;
+  priority: "high" | "medium" | "low";
+  prefill: {
+    title: string;
+    decision_type: ProductDecisionType;
+    direction?: ProductDecisionDirection;
+    decision_statement?: string;
+    rationale?: string;
+    impact_areas?: string[];
+    assumptions?: string[];
+    risks?: string[];
+    stage_key?: StageKey;
+  };
+  source_refs?: Array<{
+    type: "memory" | "gap" | "risk" | "conversation" | "document" | "artifact";
+    id?: string;
+    title?: string;
+  }>;
 }
 
 export interface Memory {
@@ -560,8 +902,11 @@ export interface TonaContextPack {
   active_reasonings: MindflowReasoning[];
   user_memories: MindflowUserMemory[];
   save_rules: any;
+  rawPayload?: any;
   warnings: string[];
   personality_context?: string;
+  product_history?: any;
+  conversation_history?: any;
 }
 
 export interface TonaStructuredOutput {
@@ -575,6 +920,43 @@ export interface TonaStructuredOutput {
     pending_items?: string[];
     preferences?: string[];
     learnings?: string[];
+    maturity_update?: {
+      stage_key: string;
+      previous_score: number;
+      new_score: number;
+      score_delta: number;
+      reason: string;
+    };
+  };
+  conversation_memory_update?: {
+    active_stage_key?: string | null;
+    conversation_summary?: string;
+    current_reasoning_thread?: string;
+    next_best_action?: string;
+    pending_question?: string;
+    last_maturity_snapshot?: any;
+    unresolved_gaps?: string[];
+  };
+  suggested_replies?: {
+    label: string;
+    value: string;
+    type: string;
+  }[];
+  question_strategy?: {
+    type: 'multiple_choice';
+    reason: string;
+    question: string;
+    options: {
+      id: string;
+      letter: string;
+      label: string;
+      short_label: string;
+      description: string;
+      description_long?: string;
+      value: string;
+    }[];
+    allows_free_text: boolean;
+    free_text_label: string;
   };
   save_recommendations: {
     target: 'mindflow_learning' | 'mindflow_memory' | 'product_field' | 'artifact' | 'decision' | 'interaction' | 'reasoning_candidate';
@@ -1089,4 +1471,34 @@ export interface Profile {
   avatar_url?: string;
   created_at: any;
   updated_at: any;
+}
+
+export type ReopenDiscussionMode =
+  | "idle"
+  | "selecting_point"
+  | "asking_questions"
+  | "waiting_user_answer";
+
+export interface ReopenDiscussionState {
+  mode: ReopenDiscussionMode;
+  stageKey: string | null;
+  category: "decision" | "hypothesis" | "fact" | "risk" | "pending" | null;
+  itemId: string | null;
+  itemTitle: string | null;
+  itemDescription: string | null;
+  firstQuestionAsked: boolean;
+}
+
+export interface SystemUser {
+  id: string;
+  uid?: string;
+  email: string;
+  display_name: string;
+  photo_url?: string;
+  system_role: 'owner' | 'admin' | 'user';
+  status: 'active' | 'suspended';
+  created_at: any;
+  updated_at: any;
+  last_login_at: any;
+  metadata?: any;
 }

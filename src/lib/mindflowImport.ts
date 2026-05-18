@@ -3,6 +3,7 @@ import {
   getDocs, limit, doc, updateDoc, writeBatch, orderBy, getDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from './firebase';
+import { safeText } from './safeText';
 import { 
   MindflowLearning, MindflowImportJob, MindflowKnowledgeType, 
   MindflowImportJobEvent, MindflowReasoningStatus, MindflowReasoningType, 
@@ -156,15 +157,15 @@ export function normalizeLearningImportRow(row: any, options: LearningImportOpti
     needsReview = true;
   }
 
-  let theme = rawTheme ? String(rawTheme).trim() : "Sem tema";
-  let subTheme = rawSubTheme ? String(rawSubTheme).trim() : "Geral";
+  let theme = rawTheme ? safeText(rawTheme).trim() : "Sem tema";
+  let subTheme = rawSubTheme ? safeText(rawSubTheme).trim() : "Geral";
 
   return {
     learning_date: rawDate || new Date().toISOString().split('T')[0],
     learning_type: learningType,
     theme: theme || "Sem tema",
     sub_theme: subTheme || "Geral",
-    learning: rawLearning ? String(rawLearning).trim() : "",
+    learning: rawLearning ? safeText(rawLearning).trim() : "",
     classification: 'aprendizado',
     source_type: 'csv_import',
     confidence_score: learningType === 'Base' ? 1.0 : 0.85,
@@ -185,7 +186,7 @@ export function normalizeLearningImportRow(row: any, options: LearningImportOpti
 export async function findSimilarLearning(learningText: string): Promise<string | null> {
   const q = query(
     collection(db, 'mindflow_learnings'),
-    where('learning', '==', learningText.trim()),
+    where('learning', '==', safeText(learningText).trim()),
     limit(1)
   );
   const snap = await getDocs(q);
@@ -611,9 +612,9 @@ export async function generateDeepReasoningsFromImport(
         reasoning_date: new Date().toISOString().split('T')[0],
         reasoning_type: type,
         inference_type: 'inductive',
-        title: `Raciocínio Automático ${i + 1} - Job ${importJobId.slice(0, 5)}`,
-        reasoning: `Este é um raciocínio profundo gerado automaticamente a partir da importação de dados. Ele conecta múltiplos sinais detectados no tema para formar uma conclusão de aplicabilidade estratégica.`,
-        theme: 'Importação Cognitiva',
+        title: safeText(`Raciocínio Automático ${i + 1} - Job ${importJobId.slice(0, 5)}`),
+        reasoning: safeText(`Este é um raciocínio profundo gerado automaticamente a partir da importação de dados. Ele conecta múltiplos sinais detectados no tema para formar uma conclusão de aplicabilidade estratégica.`),
+        theme: safeText('Importação Cognitiva'),
         classification: 'aprendizado',
         priority: 'medium',
         scope_type: 'global',

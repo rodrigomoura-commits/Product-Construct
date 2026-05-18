@@ -1,69 +1,254 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, doc, addDoc, setDoc, serverTimestamp, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, cleanFirestoreData } from '../lib/firebase';
 import { Product, ProductStage } from '../types';
-import { Boxes, Plus, Search, Filter, Loader2, ArrowRight, User, Calendar, MoreVertical, RefreshCw, Settings2, Sparkles } from 'lucide-react';
+import { Boxes, Plus, Search, Filter, Loader2, ArrowRight, User, Calendar, MoreVertical, RefreshCw, Settings2, Sparkles, LogOut, Shield, ChevronDown, Download, Users as UsersIcon, Edit2, Archive, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { calculateProductMaturity } from '../lib/maturity';
+import { 
+  getStageMaturity, 
+  getCachedProductEvolution, 
+  syncProductEvolutionCache, 
+  normalizeProgress,
+  loadStagesAndCalculateProductEvolution,
+  getDisplayProgress
+} from '../lib/progressEngine';
+import { 
+  cleanConversationSummaryForDisplay, 
+  removeStaleMaturityMentions 
+} from '../lib/summarySanitizer';
 import toast from 'react-hot-toast';
 
 export default function Dashboard() {
-  const { user, adminCtx, setQuotaExceeded } = useAuth();
-  const [products, setProducts] = useState<(Product & { calculatedProgress?: number })[]>([]);
+  const { user, profile, adminCtx, setQuotaExceeded, logout } = useAuth();
+  const [products, setProducts] = useState<(Product & { calculatedProgress?: number; access_role?: string; my_access?: any })[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProductName, setNewProductName] = useState('');
   const [newProductDesc, setNewProductDesc] = useState('');
   const [creating, setCreating] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [openMenuProductId, setOpenMenuProductId] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  useEffect(() => {
+    function handleClickOutside() {
+      setIsUserMenuOpen(false);
+      setOpenMenuProductId(null);
+    }
+
+    if (isUserMenuOpen) {
+      document.addEventListener("click", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("click", handleClickOutside);
+    };
+  }, [isUserMenuOpen]);
+
+  const displayName =
+    profile?.display_name ||
+    user?.displayName ||
+    user?.email ||
+    "Usuário";
+
+  const email =
+    profile?.email ||
+    user?.email ||
+    "";
+
+  const photoUrl =
+    profile?.photo_url ||
+    user?.photoURL ||
+    null;
+
+  const role =
+    profile?.system_role ||
+    (adminCtx?.isOwner ? "owner" : adminCtx?.isAdmin ? "admin" : "user");
+
+  function getRoleLabel(role: string) {
+    const labels: Record<string, string> = {
+      owner: "Owner",
+      admin: "Admin",
+      user: "Usuário"
+    };
+
+    return labels[role] || "Usuário";
+  }
+
+  async function handleLogout() {
+    console.log("[Logout] Clicked");
+    try {
+      setIsLoggingOut(true);
+      console.log("[Logout] Calling signOut");
+      await logout();
+      console.log("[Logout] Success, navigating");
+      navigate("/", { replace: true });
+    } catch (error) {
+      console.error("[Header] Error logging out:", error);
+      alert("Não consegui sair da conta. Tente novamente.");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid && !user?.email && !profile?.id && !profile?.email) return;
+
     loadProducts();
-  }, [user, adminCtx]);
+  }, [
+    user?.uid,
+    user?.email,
+    profile?.id,
+    profile?.email
+  ]);
+
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [quotaExceeded, setQuotaExceededLocal] = useState(false);
+
+  function getDisplayProgress(p: any) {
+    const val = p.calculatedProgress ?? p.progress ?? 0;
+    const numeric = Number(val);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(100, Math.round(numeric)));
+  }
+
+  async function loadMyProductAccess() {
+    if (!user?.uid) return [];
+
+    try {
+      const accessSnap = await getDocs(
+        collection(db, "user_product_access", user.uid, "products")
+      );
+
+      const accessItems = accessSnap.docs
+        .map((docSnap) => ({
+          id: docSnap.id,
+          product_id: docSnap.id,
+          ...(docSnap.data() as any)
+        }))
+        .filter((item) => String(item.status || "active").toLowerCase() === "active");
+
+      const products = await Promise.all(
+        accessItems.map(async (access) => {
+          const productId = access.product_id || access.id;
+
+          const productSnap = await getDoc(doc(db, "products", productId));
+
+          if (!productSnap.exists()) {
+            return null;
+          }
+
+          const productData = {
+            id: productSnap.id,
+            ...(productSnap.data() as any)
+          };
+
+          let calculatedProgress = getDisplayProgress(productData);
+
+          try {
+            calculatedProgress = await syncProductEvolutionCache(productSnap.id);
+          } catch (progressError) {
+            console.warn("[Dashboard] Could not sync progress", productSnap.id, progressError);
+          }
+
+          return {
+            ...productData,
+            my_access: access,
+            role: access.role || "viewer",
+            access_role: access.role || "viewer",
+            progress: calculatedProgress,
+            overall_progress: calculatedProgress,
+            evolution_score: calculatedProgress,
+            calculatedProgress
+          };
+        })
+      );
+
+      return products.filter(Boolean);
+    } catch (e) {
+      console.error("[Dashboard] Error loading product access:", e);
+      throw e;
+    }
+  }
 
   async function loadProducts() {
     setLoading(true);
+    setProductsError(null);
     try {
-      let snap;
-      const path = 'products';
+      if (!user?.uid) {
+        setProducts([]);
+        return;
+      }
       
-      // Try admin query first if applicable
-      if (adminCtx?.isAdmin) {
-        try {
+      let productsData: any[] = [];
+
+      try {
+        productsData = await loadMyProductAccess();
+      } catch (accessError: any) {
+        console.warn("[Dashboard] user_product_access query failed, falling back to owner/admin query", accessError);
+
+        const path = "products";
+        let snap;
+
+        if (adminCtx?.isAdmin) {
           const q = query(collection(db, path), limit(50));
           snap = await getDocs(q);
-          console.log(`Admin loaded ${snap.docs.length} products`);
-        } catch (err: any) {
-          console.warn('Admin list query failed (possibly rules), falling back to owner query:', err);
-          // Fall back to owner query
-          const q = query(collection(db, path), where('owner_id', '==', user?.uid), limit(50));
+        } else {
+          const q = query(
+            collection(db, path),
+            where("owner_id", "==", user.uid),
+            limit(50)
+          );
           snap = await getDocs(q);
         }
-      } else {
-        const q = query(collection(db, path), where('owner_id', '==', user?.uid), limit(50));
-        snap = await getDocs(q);
-      }
-      
-      const productsData = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) } as Product));
-      
-      if (productsData.length === 0) {
-        console.warn('No products found in DB for user/query');
+
+        productsData = await Promise.all(
+          snap.docs.map(async (docSnap) => {
+            const product = {
+              id: docSnap.id,
+              ...(docSnap.data() as any)
+            };
+
+            let calculatedProgress = getDisplayProgress(product);
+
+            try {
+              calculatedProgress = await syncProductEvolutionCache(product.id);
+            } catch (progressError) {
+              console.warn("[Dashboard] Could not sync fallback product progress", product.id, progressError);
+            }
+
+            return {
+              ...product,
+              role: product.owner_id === user.uid ? "owner" : "viewer",
+              access_role: product.owner_id === user.uid ? "owner" : "viewer",
+              progress: calculatedProgress,
+              overall_progress: calculatedProgress,
+              evolution_score: calculatedProgress,
+              calculatedProgress
+            };
+          })
+        );
       }
 
-      setProducts(productsData);
-    } catch (e: any) {
-      console.error('Failed to load products:', e);
-      if (e.message?.includes('Quota exceeded') || e.code === 'resource-exhausted') {
+      setProducts(productsData as any);
+    } catch (error: any) {
+      console.error('[Dashboard] Error loading products:', error);
+      if (error?.code === 'resource-exhausted' || error?.message?.includes("Quota exceeded")) {
+        setQuotaExceededLocal(true);
         setQuotaExceeded(true);
-        toast.error("Capacidade diária do banco de dados (Quota) atingida. Dados podem não carregar até o reset.", { id: 'quota-error' });
+        toast.error("Capacidade diária atingida (Quota).", { id: "quota-error" });
+      } else if (error?.code === 'permission-denied') {
+        setProductsError(
+          "Você não tem permissão para ler seus produtos. Verifique as Firestore Rules."
+        );
       } else {
-        toast.error("Erro ao carregar produtos: " + (e.code || e.message));
+        setProductsError(error?.message || "Não consegui carregar seus produtos.");
       }
-      // handleFirestoreError(e, OperationType.LIST, 'products');
     } finally {
       setLoading(false);
     }
@@ -74,17 +259,89 @@ export default function Dashboard() {
     setCreating(true);
     const path = 'products';
     try {
-      const docRef = await addDoc(collection(db, path), cleanFirestoreData({
+      const ownerName = profile?.display_name || user.displayName || user.email || 'Usuário';
+      
+      const newProductData: Omit<Product, 'id'> = {
         name: newProductName,
         description: newProductDesc,
-        owner_id: user.uid,
         status: 'active',
         current_stage: 'sense',
         progress: 0,
+        overall_progress: 0,
+        evolution_score: 0,
         quality_score: 0,
+        
+        // Ownership details
+        owner_id: user.uid,
+        owner_email: user.email || '',
+        owner_name: ownerName,
+        created_by: user.uid,
+        created_by_email: user.email || '',
+        created_by_name: ownerName,
+        
+        // Collaboration
+        collaborator_ids: [user.uid],
+        collaborator_emails: [user.email || ''],
+        editor_ids: [user.uid],
+        commenter_ids: [],
+        viewer_ids: [],
+        
+        collaborators: [
+          {
+            user_id: user.uid,
+            email: user.email || '',
+            name: ownerName,
+            role: "owner",
+            status: "active",
+            added_by: user.uid,
+            added_at: serverTimestamp()
+          }
+        ],
+        
+        pending_invite_emails: [],
+        visibility: "private",
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
-      }));
+      };
+
+      const docRef = await addDoc(collection(db, path), cleanFirestoreData(newProductData));
+
+      // Create index in user_product_access
+      await setDoc(
+        doc(db, "user_product_access", user.uid, "products", docRef.id),
+        cleanFirestoreData({
+          product_id: docRef.id,
+          product_name: newProductName,
+          product_description: newProductDesc || "",
+          role: "owner",
+          status: "active",
+          product_status: "active",
+          progress: 0,
+          overall_progress: 0,
+          evolution_score: 0,
+          current_stage: "sense",
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        }),
+        { merge: true }
+      );
+
+      // Create collaborator record
+      await setDoc(
+        doc(db, "products", docRef.id, "collaborators", user.uid),
+        cleanFirestoreData({
+          uid: user.uid,
+          user_id: user.uid,
+          email: user.email || null,
+          name: ownerName,
+          role: "owner",
+          status: "active",
+          created_at: serverTimestamp(),
+          updated_at: serverTimestamp()
+        }),
+        { merge: true }
+      );
+
       navigate(`/products/${docRef.id}`);
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, path);
@@ -139,11 +396,75 @@ export default function Dashboard() {
           >
             <Settings2 className="w-5 h-5 transition-transform group-hover:rotate-45" />
           </button>
-          <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-slate-200 shadow-inner">
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="User" referrerPolicy="no-referrer" />
-            ) : (
-              <User className="w-full h-full p-1.5 text-slate-400" />
+          <div
+            className="relative"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setIsUserMenuOpen((current) => !current)}
+              className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-1.5 shadow-sm transition-all hover:border-violet-200 hover:bg-violet-50"
+              aria-label="Abrir menu do usuário"
+            >
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt={displayName}
+                  referrerPolicy="no-referrer"
+                  className="h-9 w-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 text-violet-700">
+                  <User className="h-4 w-4" />
+                </div>
+              )}
+
+              <ChevronDown className="h-4 w-4 text-slate-400" />
+            </button>
+
+            {isUserMenuOpen && (
+              <div className="absolute right-0 top-12 z-[9999] w-72 rounded-3xl border border-slate-200 bg-white p-3 shadow-2xl">
+                <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+                  {photoUrl ? (
+                    <img
+                      src={photoUrl}
+                      alt={displayName}
+                      referrerPolicy="no-referrer"
+                      className="h-11 w-11 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-violet-700">
+                      <User className="h-5 w-5" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-black text-slate-950">
+                      {displayName}
+                    </p>
+                    <p className="truncate text-xs font-semibold text-slate-500">
+                      {email}
+                    </p>
+
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-violet-700">
+                      <Shield className="h-3 w-3" />
+                      {getRoleLabel(role)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="my-2 h-px bg-slate-100" />
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-black text-rose-600 transition-all hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <LogOut className="h-4 w-4" />
+                  {isLoggingOut ? "Saindo..." : "Sair da conta"}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -168,6 +489,23 @@ export default function Dashboard() {
           <div className="bg-white border border-slate-200 rounded-3xl p-24 flex flex-col items-center justify-center shadow-sm">
             <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-4" />
             <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Carregando seus produtos...</p>
+          </div>
+        ) : productsError ? (
+          <div className="rounded-3xl border border-rose-200 bg-rose-50 p-8 text-center">
+            <h3 className="text-xl font-black text-rose-900">
+              Erro ao carregar produtos
+            </h3>
+            <p className="mt-2 text-sm font-semibold text-rose-700">
+              {productsError}
+            </p>
+            <button
+              type="button"
+              onClick={loadProducts}
+              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-rose-600 shadow-sm transition-all hover:bg-rose-50"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </button>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-3xl p-24 flex flex-col items-center justify-center text-center shadow-sm">
@@ -212,40 +550,136 @@ export default function Dashboard() {
                 onClick={() => navigate(`/products/${product.id}`)}
               >
                 <div className="flex items-start justify-between mb-6">
-                   <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm border border-slate-100">
+                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm border border-slate-100">
                     <Boxes className="w-6 h-6" />
                   </div>
-                  <button className="p-2 hover:bg-slate-50 rounded-xl text-slate-300 transition-colors">
-                    <MoreVertical className="w-5 h-5" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuProductId(openMenuProductId === product.id ? null : product.id);
+                      }}
+                      className="p-2 hover:bg-slate-50 rounded-xl text-slate-300 transition-colors"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                    {openMenuProductId === product.id && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        className="absolute right-0 top-10 z-[9999] w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                      >
+                        {/* Botão Editar */}
+                        {(product as any).my_access?.permissions?.canEditProduct && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate(`/products/${product.id}?tab=advanced`);
+                              setOpenMenuProductId(null);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4 text-slate-400" />
+                            Editar Produto
+                          </button>
+                        )}
+                        
+                        {/* Botão Exportar */}
+                        {(product as any).my_access?.permissions?.canExport && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Adicionar lógica de exportação depois
+                              toast("Funcionalidade de exportação em breve!");
+                              setOpenMenuProductId(null);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <Download className="w-4 h-4 text-slate-400" />
+                            Exportar Produto
+                          </button>
+                        )}
+                        
+                        {/* Botão Acessos */}
+                        {(product as any).my_access?.permissions?.canManageAccess && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate(`/products/${product.id}?tab=access`);
+                              setOpenMenuProductId(null);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            <UsersIcon className="w-4 h-4 text-slate-400" />
+                            Gerenciar Acessos
+                          </button>
+                        )}
+
+                        {/* Botão Arquivar/Deletar */}
+                        {(product as any).my_access?.permissions?.canDeleteProduct && (
+                          <>
+                            <div className="h-px bg-slate-100 my-1 mx-2" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Adicionar lógica para arquivar ou deletar depois
+                                toast("Funcionalidade de arquivamento em breve!");
+                                setOpenMenuProductId(null);
+                              }}
+                              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                            >
+                              <Archive className="w-4 h-4 text-rose-400" />
+                              Arquivar Produto
+                            </button>
+                          </>
+                        )}
+                        {/* Placeholder fallback se nenhum botão for mostrado para viewer puro */}
+                        {!(product as any).my_access?.permissions?.canEditProduct && !(product as any).my_access?.permissions?.canExport && !(product as any).my_access?.permissions?.canManageAccess && !(product as any).my_access?.permissions?.canDeleteProduct && (
+                          <p className="text-xs px-3 py-2 text-slate-400 italic">Sem ações extras disponíveis</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
-                <h3 className="text-xl font-black text-slate-900 mb-1 truncate tracking-tight">{product.name}</h3>
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <h3 className="text-xl font-black text-slate-900 truncate tracking-tight">
+                    {product.name}
+                    {product.access_role && (
+                      <span className="ml-2 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                        {product.access_role}
+                      </span>
+                    )}
+                  </h3>
+                </div>
                 <p className="text-slate-400 text-sm mb-6 line-clamp-2 leading-relaxed h-10 italic">
-                  {product.description || "Sem descrição disponível."}
+                  {cleanConversationSummaryForDisplay(product.description || (product as any).conversation_summary || "Sem descrição disponível.")}
                 </p>
 
-                <div className="flex flex-col gap-3">
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-indigo-600 h-full rounded-full transition-all duration-1000"
-                      style={{ width: `${product.calculatedProgress ?? product.progress}%` }}
-                    />
+                  <div className="flex flex-col gap-3">
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div 
+                        className="bg-indigo-600 h-full rounded-full transition-all duration-1000"
+                        style={{ width: `${getDisplayProgress(product)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-slate-400">Evolução do Produto</span>
+                      <span className="text-indigo-600">{getDisplayProgress(product)}%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
-                    <span className="text-slate-400">Progresso</span>
-                    <span className="text-indigo-600">{product.calculatedProgress ?? product.progress}%</span>
-                  </div>
-                </div>
 
                 <div className="mt-6 pt-6 border-t border-slate-100 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-400">
                     <Calendar className="w-3.5 h-3.5" />
                     <span className="text-[10px] font-bold uppercase tracking-tight">Stage: {product.current_stage}</span>
                   </div>
-                  <div className="flex items-center gap-1 text-slate-900 font-bold text-xs uppercase tracking-tighter group-hover:text-indigo-600 transition-colors">
-                    Workspace <ArrowRight className="w-4 h-4" />
-                  </div>
+                  
+                  {((product as any).my_access?.permissions?.canView ?? true) && (
+                    <div className="flex items-center gap-1 text-slate-900 font-bold text-xs uppercase tracking-tighter group-hover:text-indigo-600 transition-colors">
+                      Workspace <ArrowRight className="w-4 h-4" />
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ))}

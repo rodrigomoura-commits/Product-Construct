@@ -4,7 +4,7 @@ import {
   ExternalLink, Layers, Database, Shield, Layout,
   MoreVertical, FileText, Activity
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../../lib/utils';
 import DatabaseTableDetailDrawer from './DatabaseTableDetailDrawer';
 
