@@ -402,5 +402,21 @@ service cloud.firestore {
       allow update: if isOwnerOrAdmin();
       allow delete: if isOwner();
     }
+
+    match /webhooks/{webhookId} {
+      allow read: if isOwnerOrAdmin();
+      allow create, update, delete: if isOwnerOrAdmin();
+    }
+
+    match /webhook_logs/{logId} {
+      allow read: if isOwnerOrAdmin();
+      allow create: if isOwnerOrAdmin();
+      allow update, delete: if false;
+    }
+
+    match /system_settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isOwnerOrAdmin();
+    }
   }
 }

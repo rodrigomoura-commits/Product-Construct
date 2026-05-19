@@ -5,7 +5,7 @@ import {
   serverTimestamp,
   updateDoc
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, safeWrite } from "./firebase";
 import { calculateProductMaturity } from "./maturity";
 
 export type ProgressKind = "stage_maturity" | "product_evolution";
@@ -100,8 +100,11 @@ export async function touchStage(productId: string, stageKey: string, type: 'mem
 
   const updateField = fieldMap[type] || 'updated_at';
 
-  await updateDoc(doc(db, "products", productId, "stages", stageKey), {
-    [updateField]: serverTimestamp(),
-    updated_at: serverTimestamp()
-  });
+  return safeWrite(() => 
+    updateDoc(doc(db, "products", productId, "stages", stageKey), {
+      [updateField]: serverTimestamp(),
+      updated_at: serverTimestamp()
+    }),
+    `touch_stage_${type}`
+  );
 }

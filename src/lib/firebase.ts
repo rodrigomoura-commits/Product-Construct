@@ -30,7 +30,10 @@ interface FirestoreErrorInfo {
   }
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function handleFirestoreError(error: any, operationType: OperationType, path: string | null) {
+  const isQuotaError = error?.code === 'resource-exhausted' || 
+                       (error?.message && error.message.includes('Quota limit exceeded'));
+
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -42,8 +45,34 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  
+  if (isQuotaError) {
+    console.warn('⚠️ FIRESTORE QUOTA EXCEEDED: Operation stopped to prevent further failures.', errInfo);
+    // We could attach a specialized flag here
+    (error as any).isQuotaExhausted = true;
+  } else {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+  }
+  
+  throw error;
+}
+
+/**
+ * Safe version of database operations that ignores quota errors for non-critical non-blocking operations.
+ */
+export async function safeWrite(op: () => Promise<any>, label: string = 'operation') {
+  try {
+    return await op();
+  } catch (error: any) {
+    const isQuotaError = error?.code === 'resource-exhausted' || 
+                         (error?.message && error.message.includes('Quota limit exceeded'));
+    
+    if (isQuotaError) {
+      console.warn(`[SafeWrite] Quota exceeded for ${label}, skipping.`);
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**

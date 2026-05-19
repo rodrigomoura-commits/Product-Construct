@@ -36,14 +36,33 @@ export function normalizeError(error: any, fallbackType = "UNKNOWN_ERROR") {
   };
 }
 
-export function formatDate(date: any) {
-  if (!date) return "";
-  const d = date.toDate ? date.toDate() : new Date(date);
-  return d.toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+export function formatSafeDate(value?: string | number | Date | null | { seconds?: number }): string {
+  if (!value) return "Nunca executado";
+
+  let date: Date;
+
+  if (typeof value === 'object' && value !== null && 'seconds' in value) {
+    date = new Date((value as any).seconds * 1000);
+  } else {
+    date = new Date(value as any);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return "Nunca executado";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+/**
+ * @deprecated Use formatSafeDate instead for better Firebase Timestamp support
+ */
+export function formatDate(date: any): string {
+  return formatSafeDate(date);
 }

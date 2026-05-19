@@ -95,11 +95,30 @@ async function startServer() {
     }
   });
 
-  // NEW: Test a specific model
+  // NEW: Test a specific model or webhook
   app.post("/api/admin/integrations/gemini/test-model", async (req, res) => {
     try {
       const { model } = req.body;
-      if (!model) return res.status(400).json({ error: "Model is required" });
+      
+      // Check Engine Mode
+      const aiConfig = await getGeminiModelConfig() as any;
+      const isWebhookMode = aiConfig.engineMode === 'webhook' && aiConfig.webhookUrl;
+
+      if (isWebhookMode) {
+        console.log(`[LLM Test] Testing Webhook: ${aiConfig.webhookUrl}`);
+        const { callAIWebhook } = await import("./src/server/aiWebhookClient");
+        const result = await callAIWebhook(aiConfig.webhookUrl, {
+          prompt: "Teste de conexão do Admin. Por favor, responda apenas 'CONECTADO'.",
+          instructions: "TEST_MODE: Verificação de conectividade do sistema."
+        });
+        return res.json({ 
+          success: true, 
+          message: `Webhook respondendo: "${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}"`,
+          type: 'webhook'
+        });
+      }
+
+      if (!model) return res.status(400).json({ error: "Model is required in direct mode" });
 
       const ai = getGeminiClient() as any;
       const targetModel = model.startsWith('models/') ? model : `models/${model}`;
@@ -109,8 +128,13 @@ async function startServer() {
         contents: [{ role: "user", parts: [{ text: "ping" }] }]
       });
 
-      res.json({ success: true, message: `O modelo ${model} está configurado e respondendo corretamente.` });
+      res.json({ 
+        success: true, 
+        message: `O modelo ${model} está configurado e respondendo corretamente.`,
+        type: 'direct'
+      });
     } catch (error: any) {
+      console.error("[LLM Test] failed:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
@@ -365,6 +389,277 @@ async function startServer() {
         error: "scheduler-execution-failed",
         message: error?.message || String(error)
       });
+    }
+  });
+
+  // --- WEBHOOKS ADMIN API ---
+
+  // List Webhooks
+  app.get("/api/admin/webhooks", async (req, res) => {
+    try {
+      const { adminDb } = await import("./src/server/firebaseAdmin");
+      const snapshot = await adminDb.collection("webhooks").orderBy("created_at", "desc").get();
+      const webhooks = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const maskedData = { ...data };
+        // Mask sensitive data
+        if (maskedData.encrypted_secret_reference) {
+          maskedData.encrypted_secret_reference = "••••••••••••••••";
+        }
+        return { id: doc.id, ...maskedData };
+      });
+      res.json({ webhooks });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create Webhook
+  app.post("/api/admin/webhooks", async (req, res) => {
+    try {
+      const { adminDb, adminFieldValue } = await import("./src/server/firebaseAdmin");
+      const webhookData = req.body;
+      
+      const docRef = await adminDb.collection("webhooks").add({
+        ...webhookData,
+        created_at: adminFieldValue.serverTimestamp(),
+        updated_at: adminFieldValue.serverTimestamp(),
+        is_active: webhookData.is_active !== undefined ? webhookData.is_active : true
+      });
+      
+      res.json({ id: docRef.id, success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update Webhook
+  app.patch("/api/admin/webhooks/:id", async (req, res) => {
+    try {
+      const { adminDb, adminFieldValue } = await import("./src/server/firebaseAdmin");
+      const { id } = req.params;
+      const updateData = req.body;
+      
+      // Prevent unmasking if the user didn't change it but sent the masked value back
+      if (updateData.encrypted_secret_reference === "••••••••••••••••") {
+        delete updateData.encrypted_secret_reference;
+      }
+
+      await adminDb.collection("webhooks").doc(id).update({
+        ...updateData,
+        updated_at: adminFieldValue.serverTimestamp()
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete Webhook
+  app.delete("/api/admin/webhooks/:id", async (req, res) => {
+    try {
+      const { adminDb } = await import("./src/server/firebaseAdmin");
+      const { id } = req.params;
+      await adminDb.collection("webhooks").doc(id).delete();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Test Webhook
+  app.post("/api/admin/webhooks/test", async (req, res) => {
+    const { adminDb, adminFieldValue } = await import("./src/server/firebaseAdmin");
+    
+    // Function to mask sensitive data
+    const maskHeaderValue = (val: string): string => {
+      if (!val) return "";
+      if (val.startsWith("Bearer ")) {
+        const token = val.substring(7);
+        return `Bearer ${token.length > 4 ? "****" + token.substring(token.length - 4) : "****"}`;
+      }
+      return val.length > 4 ? "****" + val.substring(val.length - 4) : "****";
+    };
+
+    const maskSensitiveHeaders = (headers: any) => {
+      const masked = { ...headers };
+      const sensitiveKeys = ["authorization", "token", "key", "secret", "password", "x-api-key"];
+      Object.keys(masked).forEach(key => {
+        if (sensitiveKeys.some(s => key.toLowerCase().includes(s))) {
+          masked[key] = maskHeaderValue(String(masked[key]));
+        }
+      });
+      return masked;
+    };
+
+    try {
+      const { webhook, payload } = req.body;
+      if (!webhook || !webhook.url) return res.status(400).json({ error: "Webhook URL é obrigatória." });
+
+      // URL Validation
+      if (!webhook.url.startsWith("https://")) {
+        return res.status(400).json({ error: "Apenas conexões HTTPS são permitidas por segurança." });
+      }
+
+      const internalPatterns = ["localhost", "127.0.0.1", "0.0.0.0", "192.168.", "10.", "172.16.", "172.31."];
+      if (internalPatterns.some(p => webhook.url.includes(p))) {
+        return res.status(400).json({ error: "Endpoints locais ou privados não são permitidos." });
+      }
+
+      const startTime = Date.now();
+      const traceId = `test_${Math.random().toString(36).substring(2, 10)}`;
+      
+      const axios = (await import("axios")).default;
+      
+      const headers: any = {
+        'Content-Type': 'application/json',
+        'X-Tona-Trace-ID': traceId
+      };
+
+      // Apply Auth
+      let realSecret = webhook.encrypted_secret_reference;
+      if (realSecret === "••••••••••••••••" && webhook.id) {
+         const snap = await adminDb.collection("webhooks").doc(webhook.id).get();
+         realSecret = snap.data()?.encrypted_secret_reference;
+      }
+
+      if (webhook.auth_type === 'bearer' && realSecret) {
+         headers['Authorization'] = `Bearer ${realSecret}`;
+      } else if (webhook.auth_type === 'apikey' && webhook.auth_header_name && realSecret) {
+         headers[webhook.auth_header_name] = realSecret;
+      } else if (webhook.auth_type === 'header' && webhook.auth_header_name && realSecret) {
+         headers[webhook.auth_header_name] = realSecret;
+      }
+
+      // Custom Headers
+      if (Array.isArray(webhook.custom_headers)) {
+        webhook.custom_headers.forEach((h: any) => {
+          if (h.key && h.value && h.active !== false) {
+            headers[h.key] = h.value;
+          }
+        });
+      }
+
+      let response;
+      let errorData: any = null;
+      let diagnosticMessage = "";
+      
+      try {
+        response = await axios({
+          method: webhook.method || 'POST',
+          url: webhook.url,
+          data: payload,
+          headers,
+          timeout: 15000,
+          validateStatus: () => true // Don't throw on 4xx/5xx
+        });
+      } catch (err: any) {
+        if (err.code === 'ECONNABORTED') {
+          diagnosticMessage = "O endpoint não respondeu dentro de 15 segundos.";
+        } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
+          diagnosticMessage = "Não foi possível conectar ao endpoint informado.";
+        } else {
+          diagnosticMessage = err.message || "Erro de conexão desconhecido.";
+        }
+        errorData = err.message;
+      }
+
+      if (response) {
+        if (response.status === 401 || response.status === 403) {
+          diagnosticMessage = "O endpoint recusou a autenticação. Revise token, headers e permissões.";
+        } else if (response.status === 404) {
+          diagnosticMessage = "Endpoint não encontrado. Revise a URL configurada.";
+        } else if (response.status === 405) {
+          diagnosticMessage = "Método HTTP não permitido pelo endpoint. Revise se deve ser POST, PUT ou PATCH.";
+        } else if (response.status >= 300) {
+          diagnosticMessage = `O servidor retornou erro ${response.status}.`;
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const success = response ? (response.status >= 200 && response.status < 300) : false;
+      
+      // Astroflow Diagnostics
+      let astroflowErrorSuggestion = "";
+      if (response?.data) {
+        const bodyStr = typeof response.data === 'object' ? JSON.stringify(response.data) : String(response.data);
+        if (bodyStr.includes("messages[") && bodyStr.includes(".content is not allowed to be empty")) {
+          astroflowErrorSuggestion = "Foi detectado que o workflow recebeu uma ou mais mensagens vazias no array `messages`. Isso geralmente ocorre porque o campo enviado para a IA está lendo uma variável vazia ou inexistente no payload enviado.";
+        }
+      }
+
+      const result = {
+        status_code: response?.status || 0,
+        response_body: response?.data ? response.data : (errorData || "Sem resposta"),
+        response_headers: response?.headers || {},
+        duration_ms: duration,
+        success,
+        trace_id: traceId,
+        message: diagnosticMessage || (success ? "Sucesso" : "Falha na conexão"),
+        diagnosis: astroflowErrorSuggestion || null,
+        request_info: {
+          url: webhook.url,
+          method: webhook.method || 'POST',
+          headers: maskSensitiveHeaders(headers),
+          payload: payload
+        }
+      };
+
+      // Always log attempt
+      const logData = {
+        webhook_id: webhook.id || "unsaved_test",
+        event_type: "manual_test",
+        request_url: webhook.url,
+        request_method: webhook.method || "POST",
+        request_headers_masked: maskSensitiveHeaders(headers),
+        request_payload: payload,
+        response_status_code: result.status_code,
+        response_body: typeof result.response_body === 'object' ? JSON.stringify(result.response_body) : String(result.response_body),
+        response_headers: result.response_headers,
+        response_time_ms: result.duration_ms,
+        status: result.success ? "success" : "error",
+        error_message: result.message,
+        diagnosis: result.diagnosis,
+        trace_id: result.trace_id,
+        created_at: adminFieldValue.serverTimestamp()
+      };
+
+      await adminDb.collection("webhook_logs").add(logData).catch(e => console.error("Log failed:", e));
+
+      // Update Webhook if ID exists
+      if (webhook.id) {
+         await adminDb.collection("webhooks").doc(webhook.id).update({
+           last_test_status: result.success ? "success" : "error",
+           last_tested_at: adminFieldValue.serverTimestamp(),
+           last_status_code: result.status_code
+         }).catch(e => console.error("Update failed:", e));
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Critical Test Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get Webhook Logs
+  app.get("/api/admin/webhooks/logs", async (req, res) => {
+    try {
+      const { adminDb } = await import("./src/server/firebaseAdmin");
+      const { webhook_id, limit = 50 } = req.query;
+      
+      let query = adminDb.collection("webhook_logs").orderBy("created_at", "desc").limit(Number(limit));
+      
+      if (webhook_id) {
+        query = query.where("webhook_id", "==", webhook_id);
+      }
+      
+      const snapshot = await query.get();
+      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      res.json({ logs });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
     }
   });
 

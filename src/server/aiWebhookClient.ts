@@ -9,6 +9,7 @@ export interface WebhookRequestParams {
   userId?: string;
   userEmail?: string;
   instructions?: string;
+  rawPayload?: any;
 }
 
 export async function callAIWebhook(url: string, params: WebhookRequestParams) {
@@ -50,13 +51,83 @@ export async function callAIWebhook(url: string, params: WebhookRequestParams) {
     }
   }
 
-  // 3. Fetch Context (Simplified for MVP, matching the user's JSON structure)
-  // In a real scenario, we'd gather all the sub-collections.
-  // For the requested JSON, we'll try to provide what's available.
+  // 3. Prepare Chat History for standard AI formats
+  function sanitizeMessages(msgs: Array<{ role: string; content?: string | null }>) {
+    return msgs
+      .map((m) => ({
+        ...m,
+        content: typeof m.content === "string" ? m.content.trim() : ""
+      }))
+      .filter((m) => m.content.length > 0);
+  }
+
+  const raw = params.rawPayload || {};
   
+  // Normalization logic based on requested priority
+  let normalized_user_message = "";
+  
+  if (raw.input?.message && typeof raw.input.message === 'string' && raw.input.message.trim()) {
+    normalized_user_message = raw.input.message.trim();
+  } 
+  else if (raw.input?.continuityContext?.currentUserMessage && typeof raw.input.continuityContext.currentUserMessage === 'string' && raw.input.continuityContext.currentUserMessage.trim()) {
+    normalized_user_message = raw.input.continuityContext.currentUserMessage.trim();
+  }
+  else if (raw.input?.situationalContext?.userMessage && typeof raw.input.situationalContext.userMessage === 'string' && raw.input.situationalContext.userMessage.trim()) {
+    normalized_user_message = raw.input.situationalContext.userMessage.trim();
+  }
+  else if (raw.message && typeof raw.message === 'string' && raw.message.trim()) {
+    normalized_user_message = raw.message.trim();
+  }
+  else if (prompt && typeof prompt === 'string' && prompt.trim()) {
+    normalized_user_message = prompt.trim();
+  }
+
+  if (!normalized_user_message) {
+    throw new Error("Mensagem do usuário não encontrada no payload do webhook.");
+  }
+
+  const currentUserMessage = normalized_user_message;
+
+  let messages: any[] = [];
+  
+  // Add instructions as system message if provided
+  if (instructions && instructions.trim()) {
+    messages.push({ role: 'system', content: instructions.trim() });
+  }
+
+  // Add conversation history
+  if (Array.isArray(raw.conversationHistory?.recent_messages)) {
+    raw.conversationHistory.recent_messages.forEach((msg: any) => {
+      messages.push({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: msg.content
+      });
+    });
+  }
+  
+  // Add current message
+  messages.push({ role: 'user', content: currentUserMessage });
+
+  // Final sanitization
+  messages = sanitizeMessages(messages);
+
+  if (messages.length === 0) {
+    throw new Error("Nenhuma mensagem válida foi montada para execução.");
+  }
+
+  // Validate no invalid contents left
+  const invalidMessages = messages.filter(m => !m.content || !m.content.trim());
+  if (invalidMessages.length > 0) {
+    console.error("[Webhook] Invalid messages detected:", invalidMessages);
+    throw new Error("Existem mensagens vazias no payload do agente.");
+  }
+
   const payload = {
+    normalized_user_message, // Explicitly exposed for Astroflow blocks
     result: {
-      message: prompt, // This is the user message now
+      message: currentUserMessage,
+      normalized_user_message,
+      messages: messages, // Sanitized messages list
       agent: agentId || "concept_builder",
       action: "send_message",
       instructions: instructions || "[PHASE: JOURNEY PRINCIPLES] Foco no problema antes da solução.",
@@ -73,7 +144,7 @@ export async function callAIWebhook(url: string, params: WebhookRequestParams) {
                      stageId === 'ship' ? "Preparação de Entrega" : "Processo de Produto"
         },
         actionType: "send_message",
-        message: prompt,
+        message: currentUserMessage,
         selectedOptionIntent: "",
         mindflowContext: {
            productContext: {
@@ -99,12 +170,15 @@ export async function callAIWebhook(url: string, params: WebhookRequestParams) {
            traceability: { sources: [], confidence: "weak", missingInputs: [] }
         }
       },
-      conversationHistory: [], 
+      conversationHistory: messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role,
+        text: m.content
+      })), 
       continuityContext: {
-        lastUserMessage: prompt,
+        lastUserMessage: currentUserMessage,
         lastAssistantMessage: "",
         latestTurns: [],
-        currentUserMessage: prompt,
+        currentUserMessage: currentUserMessage,
         actionType: "send_message",
         selectedOptionIntent: "",
         continuityInstruction: "Continue a conversa a partir do histórico recente. Não reinicie o fluxo."
@@ -114,7 +188,7 @@ export async function callAIWebhook(url: string, params: WebhookRequestParams) {
         currentPhase: stageId || "strategy_foundation",
         actionType: "send_message",
         selectedOptionIntent: "",
-        userMessage: prompt,
+        userMessage: currentUserMessage,
         expectedBehavior: "continue_existing_conversation"
       },
       extraInput: {},

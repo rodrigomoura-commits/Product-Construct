@@ -1,20 +1,39 @@
 import React, { useEffect, useState } from 'react';
-import { Plug, AlertCircle, CheckCircle2, Loader2, RefreshCw, Settings2, Globe, ShieldAlert, CloudOff, Info } from 'lucide-react';
+import { Plug, AlertCircle, CheckCircle2, Loader2, RefreshCw, Settings2, Globe, ShieldAlert, CloudOff, Info, Share2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { getLLMHealth } from '../../lib/geminiProxy';
 import { GeminiConfig } from '../../components/admin/integrations/GeminiConfig';
 import GeminiConfigReviewModal from '../../components/integrations/GeminiConfigReviewModal';
 import { motion } from 'motion/react';
+import WebhooksAdminSection from './WebhooksSection';
 
 export default function IntegrationsAdminSection() {
   const [llmHealth, setLLMHealth] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showWebhooks, setShowWebhooks] = useState(false);
+  const [webhooksMetrics, setWebhooksMetrics] = useState({ active: 0, error: false, total: 0 });
+
+  const [engineMode, setEngineMode] = useState<'direct' | 'webhook'>('direct');
 
   const checkHealth = async () => {
     setLoading(true);
-    const health = await getLLMHealth();
+    const [health, webhooksRes, configRes] = await Promise.all([
+      getLLMHealth(),
+      fetch('/api/admin/webhooks').then(r => r.json()).catch(() => ({ webhooks: [] })),
+      fetch('/api/admin/integrations/gemini/config').then(r => r.json()).catch(() => ({ engineMode: 'direct' }))
+    ]);
+    
     setLLMHealth(health);
+    setEngineMode(configRes.engineMode || 'direct');
+    
+    const webhooks = webhooksRes.webhooks || [];
+    setWebhooksMetrics({
+      active: webhooks.filter((w: any) => w.is_active).length,
+      error: webhooks.some((w: any) => w.last_test_status === 'error'),
+      total: webhooks.length
+    });
+    
     setLoading(false);
   };
 
@@ -92,7 +111,15 @@ export default function IntegrationsAdminSection() {
     }
   };
 
+  const getWebhookStatus = () => {
+    if (loading) return { label: 'Verificando...', status: 'loading', color: 'bg-zinc-100 text-zinc-400 border-zinc-200' };
+    if (webhooksMetrics.total === 0) return { label: 'Offline', status: 'offline', color: 'bg-zinc-100 text-zinc-400 border-zinc-200' };
+    if (webhooksMetrics.error) return { label: 'Erro', status: 'error', color: 'bg-red-50 text-red-700 border-red-100' };
+    return { label: 'Conectado', status: 'connected', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
+  };
+
   const geminiStatus = getGeminiStatus();
+  const webhookStatus = getWebhookStatus();
 
   const integrations = [
     { 
@@ -105,11 +132,27 @@ export default function IntegrationsAdminSection() {
       icon: Globe,
       isGemini: true
     },
+    { 
+      name: 'Webhooks', 
+      status: webhookStatus.status, 
+      label: webhookStatus.label, 
+      color: webhookStatus.color, 
+      desc: 'Configure triggers and endpoints externos.', 
+      icon: Share2,
+      isWebhooks: true
+    },
     { name: 'Supabase', status: 'connected', label: 'Conectado', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', desc: 'Database, Auth and Storage provider.', icon: Settings2 },
     { name: 'Jira', status: 'disconnected', label: 'Offline', color: 'bg-zinc-100 text-zinc-400 border-zinc-200', desc: 'Sync product epics and stories with tickets.', icon: Plug },
     { name: 'Figma', status: 'disconnected', label: 'Offline', color: 'bg-zinc-100 text-zinc-400 border-zinc-200', desc: 'Embedded prototypes and design system sync.', icon: Settings2 },
     { name: 'Google Drive', status: 'disconnected', label: 'Offline', color: 'bg-zinc-100 text-zinc-400 border-zinc-200', desc: 'Source files for knowledge base.', icon: CloudOff },
   ];
+
+  if (showWebhooks) {
+    return <WebhooksAdminSection onBack={() => {
+      setShowWebhooks(false);
+      checkHealth();
+    }} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -154,12 +197,19 @@ export default function IntegrationsAdminSection() {
                   {it.status === 'loading' ? <Loader2 className="w-6 h-6 animate-spin" /> : <it.icon className="w-7 h-7" />}
                 </div>
                 
-                <span className={cn(
-                  "px-3 py-1 border rounded-full text-[10px] font-black uppercase tracking-widest",
-                  it.color
-                )}>
-                  {it.label}
-                </span>
+                <div className="flex flex-col items-end gap-2">
+                  <span className={cn(
+                    "px-3 py-1 border rounded-full text-[10px] font-black uppercase tracking-widest",
+                    it.color
+                  )}>
+                    {it.label}
+                  </span>
+                  {it.isGemini && !loading && (
+                    <span className="px-2 py-0.5 bg-zinc-100 text-zinc-500 border border-zinc-200 rounded-md text-[8px] font-black uppercase tracking-widest">
+                      {engineMode === 'webhook' ? '🌐 Webhook Sync' : '⚡ Gemini Direct'}
+                    </span>
+                  )}
+                </div>
              </div>
 
              <h3 className="font-black text-xl text-zinc-900 mb-2 tracking-tight">{it.name}</h3>
@@ -176,7 +226,10 @@ export default function IntegrationsAdminSection() {
 
              <div className="flex gap-3">
                <button 
-                 onClick={() => it.isGemini && setIsModalOpen(true)}
+                 onClick={() => {
+                   if (it.isGemini) setIsModalOpen(true);
+                   if (it.isWebhooks) setShowWebhooks(true);
+                 }}
                  className={cn(
                    "flex-1 py-3.5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-lg",
                    it.status === 'connected' ? "bg-zinc-100 text-zinc-900 hover:bg-zinc-200 shadow-zinc-100 text-[9px]" : 
@@ -184,7 +237,7 @@ export default function IntegrationsAdminSection() {
                  )}
                >
                  {it.status === 'connected' ? 'Gerenciar' : 
-                  (it.isGemini && llmHealth?.status === 'api_disabled' ? 'Ver instruções' : 'Revisar Key')}
+                  (it.isGemini && llmHealth?.status === 'api_disabled' ? 'Ver instruções' : 'Configurar')}
                </button>
                
                {it.isGemini && it.status === 'connected' && (

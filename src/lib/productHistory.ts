@@ -2,7 +2,7 @@ import {
   collection, addDoc, query, where, orderBy, limit, getDocs, 
   serverTimestamp, doc, setDoc, getDoc, updateDoc 
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, safeWrite } from './firebase';
 import { cleanFirestoreData } from './firestoreSanitizer';
 
 export interface ProductHistoryEvent {
@@ -28,10 +28,13 @@ export interface ProductHistoryEvent {
 
 export async function createProductHistoryEvent(event: Omit<ProductHistoryEvent, 'created_at'>) {
   const historyRef = collection(db, `products/${event.product_id}/history_events`);
-  return await addDoc(historyRef, cleanFirestoreData({
-    ...event,
-    created_at: serverTimestamp()
-  }));
+  return await safeWrite(() => 
+    addDoc(historyRef, cleanFirestoreData({
+      ...event,
+      created_at: serverTimestamp()
+    })),
+    'product_history_event'
+  );
 }
 
 export async function getRecentProductHistory(productId: string, limitCount = 10) {

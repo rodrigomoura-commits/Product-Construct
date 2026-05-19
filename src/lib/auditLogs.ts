@@ -7,7 +7,7 @@ import {
   serverTimestamp,
   limit
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, safeWrite } from "./firebase";
 
 export type AuditLogSeverity = "info" | "warning" | "critical";
 
@@ -65,12 +65,15 @@ export function cleanFirestoreData<T = any>(value: T): T {
 }
 
 export async function createAuditLog(payload: Omit<AuditLog, "id" | "created_at">) {
-  return addDoc(collection(db, "audit_logs"), cleanFirestoreData({
-    ...payload,
-    category: payload.category || "system",
-    severity: payload.severity || "info",
-    created_at: serverTimestamp()
-  }));
+  return safeWrite(() => 
+    addDoc(collection(db, "audit_logs"), cleanFirestoreData({
+      ...payload,
+      category: payload.category || "system",
+      severity: payload.severity || "info",
+      created_at: serverTimestamp()
+    })),
+    'audit_log'
+  );
 }
 
 export function watchAuditLogs({

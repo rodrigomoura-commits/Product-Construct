@@ -9,6 +9,8 @@ export const GeminiConfig = () => {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [engineMode, setEngineMode] = useState<'direct' | 'webhook'>('direct');
+  const [localWebhookUrl, setLocalWebhookUrl] = useState('');
 
   useEffect(() => {
     fetchConfigAndModels();
@@ -36,6 +38,8 @@ export const GeminiConfig = () => {
 
       setModels(availableModels);
       setCurrentConfig(configData);
+      setEngineMode(configData.engineMode || 'direct');
+      setLocalWebhookUrl(configData.webhookUrl || '');
       
       if (configData.defaultModel) {
         setSelectedModel(configData.defaultModel);
@@ -50,7 +54,7 @@ export const GeminiConfig = () => {
   }
 
   async function handleTest() {
-    if (!selectedModel) return;
+    if (!selectedModel && engineMode === 'direct') return;
     setTesting(true);
     try {
       const response = await fetch('/api/admin/integrations/gemini/test-model', {
@@ -60,7 +64,7 @@ export const GeminiConfig = () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Falha ao testar');
-      alert(`Sucesso: ${data.message}`);
+      alert(`Sucesso (${data.type || 'api'}): ${data.message}`);
     } catch (error: any) {
       alert(`Erro no teste: ${error.message}`);
     } finally {
@@ -69,13 +73,18 @@ export const GeminiConfig = () => {
   }
 
   async function handleSave() {
-    if (!selectedModel) return;
+    if (!selectedModel && engineMode === 'direct') return;
     setSaving(true);
     try {
       const response = await fetch('/api/admin/integrations/gemini/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultModel: selectedModel, displayName: 'Google Gemini' }),
+        body: JSON.stringify({ 
+          defaultModel: selectedModel, 
+          displayName: 'Google Gemini',
+          engineMode,
+          webhookUrl: localWebhookUrl
+        }),
       });
       
       const data = await response.json();
@@ -107,19 +116,25 @@ export const GeminiConfig = () => {
       </div>
       
       <div className="space-y-4">
-        <div className="p-5 bg-zinc-900 rounded-[2rem] relative group overflow-hidden border border-zinc-800 shadow-lg">
+        <div className="p-5 bg-zinc-900 rounded-[2rem] relative group overflow-hidden border border-zinc-800 shadow-lg mb-4">
           <div className="flex items-center justify-between mb-4 relative z-10">
-             <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/5">
-                <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Provider</p>
-                <p className="text-white text-xs font-black">Google Gemini</p>
+             <div className="flex gap-2">
+               <div className="px-3 py-1 bg-white/10 rounded-lg backdrop-blur-sm border border-white/5">
+                  <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Provider</p>
+                  <p className="text-white text-xs font-black">Google Gemini</p>
+               </div>
+               <div className="px-3 py-1 bg-indigo-500/20 rounded-lg backdrop-blur-sm border border-indigo-500/30">
+                  <p className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Mode</p>
+                  <p className="text-white text-xs font-black uppercase">{currentConfig?.engineMode === 'webhook' ? 'Webhook UI' : 'Real-time API'}</p>
+               </div>
              </div>
              <div className={cn(
                "px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-sm",
-               currentConfig?.keyExists && !currentConfig?.isPlaceholder 
+               (currentConfig?.engineMode === 'webhook' && currentConfig?.webhookUrl) || (currentConfig?.keyExists && !currentConfig?.isPlaceholder)
                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" 
                  : "bg-red-500/20 text-red-400 border border-red-500/30"
              )}>
-               Key: {currentConfig?.keyExists && !currentConfig?.isPlaceholder ? `Presente · ${currentConfig?.keySource}` : "Ausente / Placeholder"}
+               Status: {currentConfig?.engineMode === 'webhook' ? (currentConfig?.webhookUrl ? 'Webhook Ativo' : 'URL Ausente') : (currentConfig?.keyExists && !currentConfig?.isPlaceholder ? `Key OK · ${currentConfig?.keySource}` : "Key Ausente")}
              </div>
           </div>
 
@@ -143,35 +158,81 @@ export const GeminiConfig = () => {
 
         <div className="p-4 bg-zinc-50 border border-zinc-100 rounded-2xl space-y-4">
           <div>
-            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block mb-2">Alterar Modelo</label>
-            <select 
-              value={selectedModel} 
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full p-3 border border-zinc-300 bg-white rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium text-sm text-zinc-800"
-            >
-              <option value="">Selecione um modelo</option>
-              {models.map(m => (
-                <option key={m.id} value={m.id}>{m.displayName || m.name} ({m.id})</option>
-              ))}
-            </select>
+            <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block mb-3 px-1 italic italic">Engine Execution Mode</label>
+            <div className="flex p-1 bg-zinc-200/50 rounded-2xl gap-1">
+               <button 
+                 onClick={() => setEngineMode('direct')}
+                 className={cn(
+                   "flex-1 py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                   engineMode === 'direct' ? "bg-white text-zinc-900 shadow-sm" : "bg-transparent text-zinc-400 hover:text-zinc-600"
+                 )}
+               >
+                 Direct API
+               </button>
+               <button 
+                 onClick={() => setEngineMode('webhook')}
+                 className={cn(
+                   "flex-1 py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                   engineMode === 'webhook' ? "bg-white text-zinc-900 shadow-sm" : "bg-transparent text-zinc-400 hover:text-zinc-600"
+                 )}
+               >
+                 External Webhook
+               </button>
+            </div>
           </div>
+
+          {engineMode === 'direct' ? (
+            <div>
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block mb-2 px-1">Gemini Model (Default)</label>
+              <select 
+                value={selectedModel} 
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full p-4 border border-zinc-300 bg-white rounded-2xl focus:ring-4 focus:ring-indigo-100 transition-all font-bold text-sm text-zinc-800 appearance-none shadow-sm"
+              >
+                <option value="">Selecione um modelo</option>
+                {models.map(m => (
+                  <option key={m.id} value={m.id}>{m.displayName || m.name} ({m.id})</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-zinc-400 font-medium italic mt-2 px-1">Selecione o modelo LLM que será o cérebro padrão do sistema.</p>
+            </div>
+          ) : (
+            <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+              <div>
+                <label className="text-[10px] font-black text-zinc-600 uppercase tracking-widest block mb-2 px-1">Webhook Sync URL</label>
+                <input 
+                  type="url"
+                  value={localWebhookUrl}
+                  onChange={(e) => setLocalWebhookUrl(e.target.value)}
+                  placeholder="https://api-astroflow.hotmart.com/v1/webhook/..."
+                  className="w-full p-4 border border-zinc-300 bg-white rounded-2xl focus:ring-4 focus:ring-indigo-100 transition-all font-bold text-sm text-zinc-800 shadow-sm font-mono"
+                />
+              </div>
+              <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl">
+                 <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Payload Synchronous</p>
+                 <p className="text-[11px] text-emerald-600 font-medium leading-relaxed italic">
+                   Neste modo, todas as requisições de chat e agentes serão enviadas para este endpoint no formato JSON Astroflow.
+                 </p>
+              </div>
+            </div>
+          )}
           
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
              <button 
                onClick={handleTest}
-               disabled={testing || !selectedModel}
-               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-zinc-300 text-zinc-700 rounded-xl font-bold text-xs hover:bg-zinc-50 transition-colors disabled:opacity-50"
+               disabled={testing || (engineMode === 'direct' && !selectedModel) || (engineMode === 'webhook' && !localWebhookUrl)}
+               className="flex-1 flex items-center justify-center gap-2 px-4 py-4 bg-white border border-zinc-300 text-zinc-700 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-zinc-50 transition-colors disabled:opacity-50"
              >
                {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-               Testar Modelo
+               Testar Conexão
              </button>
              <button 
                onClick={handleSave}
-               disabled={saving || !selectedModel}
-               className="flex-[2] flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-colors disabled:opacity-50 shadow-md shadow-indigo-100"
+               disabled={saving || (engineMode === 'direct' && !selectedModel) || (engineMode === 'webhook' && !localWebhookUrl)}
+               className="flex-[2] flex items-center justify-center gap-2 px-4 py-4 bg-zinc-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-zinc-800 transition-colors disabled:opacity-50 shadow-xl shadow-zinc-200"
              >
                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-               Salvar como padrão global
+               Salvar Configuração
              </button>
           </div>
         </div>

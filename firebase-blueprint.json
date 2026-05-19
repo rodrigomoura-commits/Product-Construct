@@ -645,6 +645,54 @@
         "newValue": { "type": "object" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
+    },
+    "Webhook": {
+      "title": "External Webhook",
+      "description": "Configuration for external webhooks.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "method": { "type": "string", "enum": ["POST", "PUT", "PATCH"] },
+        "auth_type": { "type": "string", "enum": ["none", "bearer", "header", "apikey"] },
+        "auth_header_name": { "type": "string" },
+        "encrypted_secret_reference": { "type": "string" },
+        "custom_headers": { "type": "array", "items": { "type": "object" } },
+        "event_types": { "type": "array", "items": { "type": "string" } },
+        "payload_mode": { "type": "string", "enum": ["default", "custom"] },
+        "custom_payload_template": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "last_test_status": { "type": "string" },
+        "last_tested_at": { "type": "string", "format": "date-time" },
+        "last_status_code": { "type": "integer" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "created_by": { "type": "string" },
+        "updated_by": { "type": "string" }
+      },
+      "required": ["name", "url", "method", "event_types"]
+    },
+    "WebhookLog": {
+      "title": "Webhook Execution Log",
+      "description": "Historical record of webhook executions.",
+      "type": "object",
+      "properties": {
+        "webhook_id": { "type": "string" },
+        "event_type": { "type": "string" },
+        "request_url": { "type": "string" },
+        "request_method": { "type": "string" },
+        "request_headers_masked": { "type": "object" },
+        "request_payload": { "type": "object" },
+        "response_status_code": { "type": "integer" },
+        "response_body": { "type": "string" },
+        "response_time_ms": { "type": "number" },
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "error_message": { "type": "string" },
+        "trace_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["webhook_id", "created_at"]
     }
   },
   "firestore": {
@@ -803,6 +851,14 @@
     "audit_logs/{logId}": {
       "schema": "AuditLog",
       "description": "System audit logs."
+    },
+    "webhooks/{webhookId}": {
+      "schema": "Webhook",
+      "description": "External webhooks configuration."
+    },
+    "webhook_logs/{logId}": {
+      "schema": "WebhookLog",
+      "description": "Webhook execution history."
     }
   }
 }

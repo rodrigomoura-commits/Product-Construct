@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, onSnapshot, orderBy, limit, getDoc, writeBatch } from 'firebase/firestore';
-import { db, cleanFirestoreData } from './firebase';
+import { db, cleanFirestoreData, safeWrite } from './firebase';
 import { safeText } from './safeText';
 import { 
   MindflowLearning, 
@@ -227,7 +227,7 @@ export async function retrieveMindflowContext(params: {
     }
 
     // 3. LOG RETRIEVAL
-    try {
+    await safeWrite(async () => {
       await addDoc(collection(db, 'mindflow_retrieval_logs'), cleanFirestoreData({
         user_id: userId,
         product_id: productId || null,
@@ -246,9 +246,7 @@ export async function retrieveMindflowContext(params: {
           partial_failure: warnings.length > 0
         }
       } as any));
-    } catch (logError) {
-      console.warn("[MindFlow] Could not write retrieval log:", logError);
-    }
+    }, 'mindflow_retrieval_log');
 
   } catch (e) {
     console.error("Mindflow Context Retrieval failed (unexpected):", e);
@@ -369,28 +367,30 @@ export async function extractMindflowLearning(params: {
           created_at: serverTimestamp(),
           metadata: { reason: safeText(cand.reason) }
         };
+        
+        await safeWrite(async () => {
+          const docRef = await addDoc(collection(db, 'mindflow_learning_candidates'), cleanFirestoreData(candidateData));
 
-        const docRef = await addDoc(collection(db, 'mindflow_learning_candidates'), cleanFirestoreData(candidateData));
-
-        // Auto-promotion if extremely high confidence
-        if (cand.confidence > 0.95) {
-          await saveMindflowLearning({
-            learningType: 'Adquirida',
-            theme: cand.theme,
-            subTheme: cand.sub_theme,
-            learning: cand.learning,
-            classification: cand.classification,
-            sourceType: 'conversation',
-            scopeType: productId ? 'product' : 'user',
-            userId,
-            productId,
-            stageId,
-            agentId,
-            confidenceScore: cand.confidence,
-            needsReview: false,
-            metadata: { candidate_id: docRef.id }
-          });
-        }
+          // Auto-promotion if extremely high confidence
+          if (cand.confidence > 0.95) {
+            await saveMindflowLearning({
+              learningType: 'Adquirida',
+              theme: cand.theme,
+              subTheme: cand.sub_theme,
+              learning: cand.learning,
+              classification: cand.classification,
+              sourceType: 'conversation',
+              scopeType: productId ? 'product' : 'user',
+              userId,
+              productId,
+              stageId,
+              agentId,
+              confidenceScore: cand.confidence,
+              needsReview: false,
+              metadata: { candidate_id: docRef.id }
+            });
+          }
+        }, 'mindflow_learning_candidate');
       }
     }
   } catch (e) {

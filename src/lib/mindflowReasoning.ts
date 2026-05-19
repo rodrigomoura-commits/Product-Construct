@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, updateDoc, orderBy, limit, writeBatch, Timestamp } from 'firebase/firestore';
-import { db, cleanFirestoreData } from './firebase';
+import { db, cleanFirestoreData, safeWrite } from './firebase';
 import { safeText } from './safeText';
 import { 
   MindflowLearning, 
@@ -26,7 +26,7 @@ import { callGeminiProxy } from './geminiProxy';
 export async function runDailyMindflowReasoning(adminId: string) {
   console.log("Starting Mindflow Deep Reasoning Engine...");
   
-  const runRef = await addDoc(collection(db, 'mindflow_reasoning_runs'), cleanFirestoreData({
+  const runRef = await safeWrite(() => addDoc(collection(db, 'mindflow_reasoning_runs'), cleanFirestoreData({
     run_date: new Date().toISOString().split('T')[0],
     started_at: serverTimestamp(),
     status: 'running',
@@ -38,7 +38,12 @@ export async function runDailyMindflowReasoning(adminId: string) {
     reasonings_pending_review: 0,
     contradictions_detected: 0,
     metadata: { started_by: adminId }
-  } as any));
+  } as any)), 'mindflow_reasoning_run_init');
+
+  if (!runRef) {
+    console.error("Critical: Could not initialize reasoning run due to quota.");
+    return;
+  }
 
   const stats = {
     total: 0,
@@ -152,18 +157,20 @@ export async function runDailyMindflowReasoning(adminId: string) {
         risks_if_ignored: cand.risks_if_ignored || []
       };
 
-      const reasonDoc = await addDoc(collection(db, 'mindflow_reasonings'), cleanFirestoreData(finalReasoning));
+      const reasonDoc = await safeWrite(() => addDoc(collection(db, 'mindflow_reasonings'), cleanFirestoreData(finalReasoning)), 'mindflow_reasoning_save');
       
       // Create Traceability Links
-      for (const lId of (finalReasoning.source_learning_ids || [])) {
-        await addDoc(collection(db, 'mindflow_learning_reasoning_links'), cleanFirestoreData({
-          learning_id: lId,
-          reasoning_id: reasonDoc.id,
-          learning_role: 'primary_basis',
-          contribution_score: 0.9,
-          created_at: serverTimestamp(),
-          metadata: { run_id: runRef.id }
-        } as Omit<MindflowLearningReasoningLink, 'id'>));
+      if (reasonDoc) {
+        for (const lId of (finalReasoning.source_learning_ids || [])) {
+          await safeWrite(() => addDoc(collection(db, 'mindflow_learning_reasoning_links'), cleanFirestoreData({
+            learning_id: lId,
+            reasoning_id: reasonDoc.id,
+            learning_role: 'primary_basis',
+            contribution_score: 0.9,
+            created_at: serverTimestamp(),
+            metadata: { run_id: runRef.id }
+          } as Omit<MindflowLearningReasoningLink, 'id'>)), 'mindflow_reasoning_link');
+        }
       }
 
       stats.generated++;
@@ -173,7 +180,7 @@ export async function runDailyMindflowReasoning(adminId: string) {
     }
 
     // 4. FINALIZE RUN
-    await updateDoc(runRef, {
+    await safeWrite(() => updateDoc(runRef, {
       status: 'completed',
       finished_at: serverTimestamp(),
       completed_at: serverTimestamp(),
@@ -184,15 +191,15 @@ export async function runDailyMindflowReasoning(adminId: string) {
       reasonings_activated: stats.activated,
       reasonings_pending_review: stats.pending,
       contradictions_detected: stats.contradictions
-    });
+    }), 'mindflow_reasoning_run_finalize');
 
   } catch (e) {
     console.error("Deep Reasoning Run Failed:", e);
-    await updateDoc(runRef, {
+    await safeWrite(() => updateDoc(runRef, {
       status: 'failed',
       finished_at: serverTimestamp(),
       metadata: { error: String(e) }
-    });
+    }), 'mindflow_reasoning_run_fail');
   }
 }
 

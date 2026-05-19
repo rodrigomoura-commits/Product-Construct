@@ -3,7 +3,7 @@ import {
   query, where, orderBy, limit, serverTimestamp, 
   getDoc, setDoc 
 } from 'firebase/firestore';
-import { db, cleanFirestoreData } from './firebase';
+import { db, cleanFirestoreData, safeWrite } from './firebase';
 import { buildProductHistoryPack } from './productHistory';
 import { 
   MindflowUserMemory, 
@@ -295,23 +295,19 @@ export async function runTonaConversationTurn(params: {
         message: stageAgentError?.message
       });
 
-      try {
-        await addDoc(collection(db, "mindflow_runtime_logs"), cleanFirestoreData({
-          type: "stage_agent_fallback_used",
-          severity: "warning",
-          user_id: userId,
-          user_email: userEmail || null,
-          product_id: productId || null,
-          stage_id: stageId || null,
-          failed_collection: "stage_agent_configs",
-          failed_step: currentStep,
-          error_code: stageAgentError?.code || null,
-          error_message: stageAgentError?.message || String(stageAgentError),
-          created_at: serverTimestamp()
-        }));
-      } catch (logError) {
-        console.warn("[TonaRuntime] Could not write fallback log.", logError);
-      }
+      await safeWrite(() => addDoc(collection(db, "mindflow_runtime_logs"), cleanFirestoreData({
+        type: "stage_agent_fallback_used",
+        severity: "warning",
+        user_id: userId,
+        user_email: userEmail || null,
+        product_id: productId || null,
+        stage_id: stageId || null,
+        failed_collection: "stage_agent_configs",
+        failed_step: currentStep,
+        error_code: stageAgentError?.code || null,
+        error_message: stageAgentError?.message || String(stageAgentError),
+        created_at: serverTimestamp()
+      })), 'stage_agent_fallback_log');
     }
 
     // 9. Selecionar Specialist Agent
@@ -507,8 +503,7 @@ export async function runTonaConversationTurn(params: {
       memoryUpdateStatus = 'failed';
       console.error("[MindFlow] Interaction memory update failed:", memoryError);
       
-      // Log failure but don't stop the pipeline
-      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
+      await safeWrite(() => addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
         productId: productId || 'system',
         userId: userId,
         userEmail: userEmail || null,
@@ -517,7 +512,7 @@ export async function runTonaConversationTurn(params: {
         status: 'error',
         errorMessage: memoryError?.message || String(memoryError),
         createdAt: serverTimestamp()
-      }));
+      })), 'mindflow_memory_error_log');
     }
 
     currentStep = 'persisting_updates';
@@ -534,7 +529,7 @@ export async function runTonaConversationTurn(params: {
       });
     } catch (persistError: any) {
       console.error("[MindFlow] Persistence of updates failed:", persistError);
-      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
+      await safeWrite(() => addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
         productId: productId || 'system',
         userId: userId,
         userEmail: userEmail || null,
@@ -543,7 +538,7 @@ export async function runTonaConversationTurn(params: {
         status: 'error',
         errorMessage: persistError?.message || String(persistError),
         createdAt: serverTimestamp()
-      }));
+      })), 'mindflow_persist_error_log');
     }
 
     currentStep = 'analyzing_style';
@@ -585,26 +580,22 @@ function sanitizeTonaText(text: string) {
     const normalized = normalizeError(error, "MINDFLOW_PIPELINE_ERROR");
     
     // Log to mindflow_logs
-    try {
-      await addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
-        productId: productId || 'system',
-        userId: userId,
-        userEmail: userEmail || null,
-        role: (params as any).role || 'unknown',
-        action: 'runTonaConversationTurn',
-        pipelineStep: currentStep,
-        status: 'error',
-        errorType: normalized.type,
-        errorMessage: normalized.message,
-        stack: normalized.stack,
-        createdAt: serverTimestamp(),
-        environment: 'production',
-        activeStage: stageId || 'unknown',
-        requestPayloadPreview: { userMessageLength: userMessage?.length }
-      }));
-    } catch (logError) {
-      console.error("Critical: Failed to save mindflow_log:", logError);
-    }
+    await safeWrite(() => addDoc(collection(db, 'mindflow_logs'), cleanFirestoreData({
+      productId: productId || 'system',
+      userId: userId,
+      userEmail: userEmail || null,
+      role: (params as any).role || 'unknown',
+      action: 'runTonaConversationTurn',
+      pipelineStep: currentStep,
+      status: 'error',
+      errorType: normalized.type,
+      errorMessage: normalized.message,
+      stack: normalized.stack,
+      createdAt: serverTimestamp(),
+      environment: 'production',
+      activeStage: stageId || 'unknown',
+      requestPayloadPreview: { userMessageLength: userMessage?.length }
+    })), 'mindflow_pipeline_error_log');
 
     if (interactionId && interactionId.trim() !== '' && userId) {
       try {
@@ -709,13 +700,13 @@ async function updateUserMemoryWithResponse(params: {
     const memorySnap = await getDoc(getUserMemoryDoc(db, userId, interactionId));
     if (memorySnap.exists()) {
       const memoryData = memorySnap.data() as any;
-      await addDoc(collection(db, 'mindflow_runtime_logs'), cleanFirestoreData({
+      await safeWrite(() => addDoc(collection(db, 'mindflow_runtime_logs'), cleanFirestoreData({
         interaction_id: interactionId,
         user_id: memoryData?.user_id || userId,
         base_learning_ids: learningsUsed,
         reasoning_ids: reasoningsUsed,
         created_at: serverTimestamp()
-      }));
+      })), 'mindflow_runtime_activity_log');
     }
   } catch (logError) {
     console.error("Failed to log runtime activity:", logError);
