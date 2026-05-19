@@ -20,6 +20,8 @@ interface HealthData {
 interface GeminiConfig {
   defaultModel: string;
   displayName: string;
+  engineMode: 'direct' | 'webhook';
+  webhookUrl: string;
   source: 'database' | 'env' | 'fallback';
   keyExists: boolean;
   keyValid: boolean;
@@ -47,6 +49,8 @@ export default function GeminiConfigReviewModal({ isOpen, onClose, onStatusUpdat
   const [config, setConfig] = useState<GeminiConfig | null>(null);
   const [availableModels, setAvailableModels] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState('');
+  const [engineMode, setEngineMode] = useState<'direct' | 'webhook'>('direct');
+  const [webhookUrl, setWebhookUrl] = useState('');
   const [loadingModels, setLoadingModels] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [testingModel, setTestingModel] = useState(false);
@@ -64,6 +68,8 @@ export default function GeminiConfigReviewModal({ isOpen, onClose, onStatusUpdat
       if (configResult.status === "fulfilled") {
         setConfig(configResult.value);
         setSelectedModel(configResult.value.defaultModel || "gemini-2.5-flash");
+        setEngineMode(configResult.value.engineMode || "direct");
+        setWebhookUrl(configResult.value.webhookUrl || "");
       }
       if (modelsResult.status === "fulfilled") {
         setAvailableModels(modelsResult.value.models || []);
@@ -110,7 +116,6 @@ export default function GeminiConfigReviewModal({ isOpen, onClose, onStatusUpdat
   };
 
   const handleSaveConfig = async () => {
-    if (!selectedModel) return;
     setSavingConfig(true);
     try {
       const res = await fetch('/api/admin/integrations/gemini/config', {
@@ -118,7 +123,9 @@ export default function GeminiConfigReviewModal({ isOpen, onClose, onStatusUpdat
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           defaultModel: selectedModel,
-          displayName: availableModels.find(m => m.id === selectedModel)?.displayName || selectedModel
+          displayName: availableModels.find(m => m.id === selectedModel)?.displayName || selectedModel,
+          engineMode,
+          webhookUrl
         })
       });
       const data = await res.json();
@@ -194,6 +201,64 @@ export default function GeminiConfigReviewModal({ isOpen, onClose, onStatusUpdat
           </div>
 
           <div className="p-8 overflow-y-auto no-scrollbar flex-1 space-y-8">
+            <section className="space-y-4">
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                 <Bot className="w-3 h-3 text-indigo-500" /> Área 0: Modo do Motor de IA
+               </h3>
+               <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-6 space-y-6">
+                 <div className="flex p-1 bg-slate-200 rounded-2xl w-full max-w-sm">
+                   <button 
+                     onClick={() => setEngineMode('direct')}
+                     className={cn(
+                       "flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                       engineMode === 'direct' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                     )}
+                   >
+                     Direct API (Gemini)
+                   </button>
+                   <button 
+                     onClick={() => setEngineMode('webhook')}
+                     className={cn(
+                       "flex-1 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
+                       engineMode === 'webhook' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                     )}
+                   >
+                     Webhook Sync
+                   </button>
+                 </div>
+
+                 {engineMode === 'webhook' && (
+                   <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">URL do Webhook</label>
+                     <div className="relative group">
+                       <input 
+                         type="text"
+                         value={webhookUrl}
+                         onChange={(e) => setWebhookUrl(e.target.value)}
+                         placeholder="https://api-astroflow.hotmart.com/v1/webhook/..."
+                         className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-indigo-100 transition-all"
+                       />
+                       <Globe className="absolute right-6 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-hover:text-indigo-400" />
+                     </div>
+                     <p className="text-[10px] text-slate-400 italic px-2">
+                       Este modo enviará o contexto completo estruturado para o endpoint indicado.
+                     </p>
+                   </div>
+                 )}
+
+                 <div className="flex justify-end">
+                    <button 
+                      onClick={handleSaveConfig}
+                      disabled={savingConfig}
+                      className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {savingConfig ? <Loader2 className="w-3 h-3 animate-spin"/> : <CheckCircle2 className="w-3 h-3"/>}
+                      Salvar Configuração de Engine
+                    </button>
+                 </div>
+               </div>
+            </section>
+
             <section className="space-y-4">
                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                  <Key className="w-3 h-3 text-indigo-500" /> Área 1: Chave de API

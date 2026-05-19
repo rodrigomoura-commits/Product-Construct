@@ -383,10 +383,13 @@ export async function runTonaConversationTurn(params: {
     try {
       const responseText = await callGeminiProxy({
         prompt: prompt,
+        userMessage: userMessage,
         useCase: "chat",
         agentId: "tona_orchestrator",
         productId,
         stageId,
+        userId,
+        userEmail,
         config: {
           responseMimeType: "application/json"
         }

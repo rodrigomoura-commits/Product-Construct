@@ -4,11 +4,14 @@
 
 export async function callGeminiProxy(params: {
   prompt: string;
+  userMessage?: string; // Original user message
   model?: string;
   useCase?: string;
   agentId?: string;
   productId?: string;
   stageId?: string;
+  userId?: string;
+  userEmail?: string;
   config?: any;
 }) {
   const response = await fetch('/api/mindflow/chat', {

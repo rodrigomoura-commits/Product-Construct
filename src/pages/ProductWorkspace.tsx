@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { normalizeProgress, calculateProductEvolutionFromStages, syncProductEvolutionCache } from '../lib/progressEngine';
+import { normalizeProgress, calculateProductEvolutionFromStages, syncProductEvolutionCache, getDisplayProgress } from '../lib/progressEngine';
 
 // Components
 import AIAssistantPanel, { AIAssistantPanelRef } from '../components/workspace/AIAssistantPanel';
@@ -247,7 +247,7 @@ export default function ProductWorkspace() {
         event: "workspace_opened"
       });
     }
-  }, [product?.id, user?.uid, activeTab, loadingAccess, permissions?.canView]);
+  }, [product?.id, user?.uid, loadingAccess, permissions?.canView]);
 
   useEffect(() => {
     if (activeTab === "access" && !canManageProductAccess) {
@@ -282,9 +282,15 @@ export default function ProductWorkspace() {
   useEffect(() => {
     if (loadingProduct || !productId || stages.length === 0 || !product) return;
     
-    // Use the central sync helper from progressEngine
-    syncProductEvolutionCache(productId)
-      .catch(err => console.error("Error syncing product evolution:", err));
+    const calculatedEvolution = calculateProductEvolutionFromStages(stages);
+    const currentEvolution = getDisplayProgress(product);
+
+    // Only sync if there's a real difference to avoid infinite loops
+    if (Math.abs(calculatedEvolution - currentEvolution) > 0.1) {
+      console.log("[Workspace] Progress changed, syncing cache...", { calculatedEvolution, currentEvolution });
+      syncProductEvolutionCache(productId)
+        .catch(err => console.error("Error syncing product evolution:", err));
+    }
     
   }, [loadingProduct, productId, stages, product]);
 

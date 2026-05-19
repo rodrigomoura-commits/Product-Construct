@@ -15,8 +15,8 @@ service cloud.firestore {
         && (
           userDoc().data.system_role == "owner"
           || userDoc().data.role == "owner"
-          || userDoc().data.email == "rodrigo.moura@hotmart.com"
-          || request.auth.token.email == "rodrigo.moura@hotmart.com"
+          || userDoc().data.email in ["rodrigo.moura@hotmart.com", "celular@rodrigomoura.net"]
+          || request.auth.token.email in ["rodrigo.moura@hotmart.com", "celular@rodrigomoura.net"]
         );
     }
 
@@ -316,9 +316,28 @@ service cloud.firestore {
     }
 
     // MULTI-USER MINDFLOW COLLECTIONS
-    match /mindflow_user_memories/{userId}/memories/{memoryId} {
-      allow read, create, update: if isOwnerOrAdmin() || isSelf(userId);
+    match /mindflow_user_memories/{docId} {
+      allow read: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isOwnerOrAdmin() || (isSignedIn() && resource.data.user_id == request.auth.uid);
       allow delete: if isOwnerOrAdmin();
+      
+      // Nested memories sub-collection
+      match /memories/{memoryId} {
+        allow read, create, update: if isOwnerOrAdmin() || isSelf(docId);
+        allow delete: if isOwnerOrAdmin();
+      }
+    }
+
+    match /mindflow_memories/{memoryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isOwnerOrAdmin();
+    }
+
+    match /mindflow_learning_reasoning_links/{linkId} {
+      allow read: if isSignedIn();
+      allow write: if isOwnerOrAdmin();
     }
 
     match /mindflow_product_memories/{productId}/memories/{memoryId} {

@@ -70,6 +70,8 @@ export async function getGeminiModelConfig() {
         const data = configDoc.data();
         return {
           provider: data?.provider || "google_gemini",
+          engineMode: data?.engineMode || "direct", // 'direct' or 'webhook'
+          webhookUrl: data?.webhookUrl || null,
           defaultModel: data?.defaultModel || envModel || FALLBACK_MODEL,
           displayName: data?.displayName || data?.defaultModel || "Google Gemini",
           useCaseModels: data?.useCaseModels || {},
@@ -82,6 +84,8 @@ export async function getGeminiModelConfig() {
 
     return {
       provider: "google_gemini",
+      engineMode: "direct",
+      webhookUrl: null,
       defaultModel: envModel || FALLBACK_MODEL,
       displayName: envModel || "Google Gemini",
       useCaseModels: {},
@@ -106,14 +110,24 @@ export async function getGeminiModelConfig() {
   }
 }
 
-export async function saveGeminiModelConfig(params: { defaultModel: string, displayName?: string, useCaseModels?: Record<string, string>, userId: string, userEmail: string }) {
-  const { defaultModel, displayName, useCaseModels, userId, userEmail } = params;
+export async function saveGeminiModelConfig(params: { 
+  defaultModel: string, 
+  displayName?: string, 
+  useCaseModels?: Record<string, string>, 
+  engineMode?: 'direct' | 'webhook',
+  webhookUrl?: string,
+  userId: string, 
+  userEmail: string 
+}) {
+  const { defaultModel, displayName, useCaseModels, engineMode, webhookUrl, userId, userEmail } = params;
   const configRef = adminDb.collection("system_settings").doc("llm");
   
   const previousConfig = await getGeminiModelConfig();
   
   const newConfig = {
     provider: "google_gemini",
+    engineMode: engineMode || previousConfig.engineMode || "direct",
+    webhookUrl: webhookUrl !== undefined ? webhookUrl : (previousConfig.webhookUrl || ""),
     defaultModel,
     displayName: displayName || defaultModel,
     useCaseModels: useCaseModels || previousConfig.useCaseModels || {},

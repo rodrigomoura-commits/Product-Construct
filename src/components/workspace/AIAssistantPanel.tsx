@@ -635,8 +635,8 @@ async function saveReopenDiscussionMemory(params: {
         body: JSON.stringify({ 
           product_id: product.id,
           stage_key: activeStage,
-          force: true,
-          trigger: "manual_regenerate_after_reopen"
+          force: false,
+          trigger: "automatic_stage_closure"
         })
       });
 

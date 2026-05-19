@@ -115,17 +115,19 @@ async function startServer() {
     }
   });
 
-  // NEW: Save Gemini config (MODELS ONLY, NO KEYS)
+  // NEW: Save Gemini config (MODELS, ENGINE MODE, WEBHOOK)
   app.post("/api/admin/integrations/gemini/config", async (req, res) => {
     try {
-      const { defaultModel, displayName, useCaseModels, userId, userEmail } = req.body;
-      if (!defaultModel) return res.status(400).json({ error: "defaultModel is required" });
+      const { defaultModel, displayName, useCaseModels, engineMode, webhookUrl, userId, userEmail } = req.body;
+      if (!defaultModel && engineMode === 'direct') return res.status(400).json({ error: "defaultModel is required when in direct mode" });
 
-      // SECURITY: NEVER accept apiKey in this endpoint to prevent accidental persistence
+      // SECURITY: NEVER accept apiKey in this endpoint
       const config = await saveGeminiModelConfig({ 
-        defaultModel, 
+        defaultModel: defaultModel || "gemini-1.5-flash", 
         displayName, 
         useCaseModels, 
+        engineMode,
+        webhookUrl,
         userId: userId || "admin", 
         userEmail: userEmail || "admin@tona.ai" 
       });
@@ -152,6 +154,8 @@ async function startServer() {
       
       res.json({
         provider: "google_gemini",
+        engineMode: (modelConfig as any).engineMode || "direct",
+        webhookUrl: (modelConfig as any).webhookUrl || "",
         defaultModel: modelConfig.defaultModel,
         displayName: modelConfig.displayName,
         source: modelConfig.source,
@@ -174,10 +178,29 @@ async function startServer() {
   // Gemini Proxy Agent (Specific to Mindflow)
   app.post("/api/mindflow/chat", async (req, res) => {
     try {
-      const { prompt, model: requestedModel, config = {}, useCase, agentId } = req.body;
+      const { prompt, userMessage, model: requestedModel, config = {}, useCase, agentId, productId, stageId, userId, userEmail } = req.body;
       
       if (!prompt) {
         return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      // Check Engine Mode
+      const aiConfig = await getGeminiModelConfig() as any;
+      const isWebhookMode = aiConfig.engineMode === 'webhook' && aiConfig.webhookUrl;
+
+      if (isWebhookMode) {
+        console.log(`[LLM] Forwarding to Webhook: ${aiConfig.webhookUrl}`);
+        const { callAIWebhook } = await import("./src/server/aiWebhookClient");
+        const result = await callAIWebhook(aiConfig.webhookUrl, {
+          prompt: userMessage || prompt, // Prefer original user message for "message" field
+          productId,
+          stageId,
+          agentId,
+          userId,
+          userEmail,
+          instructions: prompt // The full prompt acts as instructions
+        });
+        return res.json({ text: result.text });
       }
 
       // Resolve model using priority logic
@@ -324,7 +347,10 @@ async function startServer() {
         trigger: req.body?.trigger || "manual",
         triggered_by_uid: decoded.uid,
         triggered_by_email: email,
-        job_id: req.body?.job_id || "stage_closure_auto_summary"
+        job_id: req.body?.job_id || "stage_closure_auto_summary",
+        product_id: req.body?.product_id,
+        stage_key: req.body?.stage_key,
+        force: req.body?.force
       });
 
       return res.status(200).json({
@@ -492,7 +518,7 @@ async function startServer() {
         triggered_by_email: "system"
       });
 
-      const intervalMinutes = Number(job.interval_minutes || job.fixed_interval || 1);
+      const intervalMinutes = Number(job.interval_minutes || job.fixed_interval || 30);
       const nextMs = Date.now() + intervalMinutes * 60 * 1000;
 
       const updateData: any = {

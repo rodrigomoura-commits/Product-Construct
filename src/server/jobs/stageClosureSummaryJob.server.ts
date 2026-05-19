@@ -345,10 +345,14 @@ export async function runStageClosureSummaryJobServer(params: JobParams = {}) {
 
   let runCreated = false;
 
-  const updateRunProgress = async (message?: string, level: "info" | "success" | "error" = "info") => {
+  const updateRunProgress = async (message?: string, level: "info" | "success" | "error" = "info", forceWrite = false) => {
     if (message) {
       logs.push({ level, message, created_at_ms: Date.now() });
       console.log(`[Scheduler Job] ${message}`);
+    }
+
+    if (!forceWrite && !message?.includes("Iniciada") && (stats.products_checked + stats.stages_checked) % 10 !== 0) {
+      return;
     }
 
     const payload: any = {
@@ -357,8 +361,8 @@ export async function runStageClosureSummaryJobServer(params: JobParams = {}) {
       heartbeat_at_ms: Date.now(),
       ...stats,
       errors_count: errors.length,
-      errors: errors.slice(-50),
-      logs: logs.slice(-100),
+      errors: errors.slice(-10), // Reduced slice to save space/bandwidth
+      logs: logs.slice(-20),   // Reduced slice to save space/bandwidth
       updated_at: adminFieldValue.serverTimestamp(),
       updated_at_ms: Date.now()
     };
@@ -586,7 +590,7 @@ export async function runStageClosureSummaryJobServer(params: JobParams = {}) {
 
     const jobSnap = await jobRef.get();
     const job = jobSnap.exists ? jobSnap.data() : {};
-    const intervalMinutes = Number(job?.interval_minutes || job?.fixed_interval || 1);
+    const intervalMinutes = Number(job?.interval_minutes || job?.fixed_interval || 30);
     const nextMs = Date.now() + intervalMinutes * 60 * 1000;
 
     const updateData: any = {

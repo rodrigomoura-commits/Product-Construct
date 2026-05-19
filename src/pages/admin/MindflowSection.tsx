@@ -33,6 +33,7 @@ import { toast } from 'react-hot-toast';
 import MindflowContextsSection from './MindflowContextsSection';
 import MindflowInteractionsSection from './MindflowInteractionsSection';
 import MindflowUsersSection from './MindflowUsersSection';
+import MindflowProductMemoriesSection from './MindflowProductMemoriesSection';
 import MindflowConflictsSection from './MindflowConflictsSection';
 import MindflowBehavioralSection from './MindflowBehavioralSection';
 import MindflowTraceSection from './MindflowTraceSection';
@@ -40,7 +41,7 @@ import MindflowGuardrailsSection from './MindflowGuardrailsSection';
 import ImportLearningsButton from '../../components/admin/mindflow/ImportLearningsButton';
 import { MindflowImportJob } from '../../types';
 
-type MindflowTab = 'overview' | 'learnings' | 'reasonings' | 'base' | 'acquired' | 'user_memories' | 'contexts' | 'candidates' | 'conflicts' | 'guardrails' | 'import' | 'users' | 'logs' | 'config';
+type MindflowTab = 'overview' | 'learnings' | 'reasonings' | 'base' | 'acquired' | 'user_memories' | 'product_memories' | 'contexts' | 'candidates' | 'conflicts' | 'guardrails' | 'import' | 'users' | 'logs' | 'config';
 
 export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
   const { user, profile, loading: authLoading } = useAuth();
@@ -311,7 +312,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
       checkStatus();
     }
 
-    if (['users', 'contexts', 'user_memories'].includes(activeTab)) {
+    if (['users', 'contexts', 'user_memories', 'product_memories'].includes(activeTab)) {
       setLoading(false);
     }
 
@@ -336,6 +337,7 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
     { id: 'candidates', label: 'Câmara de Triagem', icon: Sparkles, color: 'text-amber-500', badge: candidates.length },
     { id: 'reasonings', label: 'Raciocínios Profundos', icon: Workflow, color: 'text-amber-500' },
     { id: 'user_memories', label: 'Memórias do Usuário', icon: History, color: 'text-rose-500' },
+    { id: 'product_memories', label: 'Memórias do Produto', icon: Briefcase, color: 'text-indigo-600' },
     { id: 'conflicts', label: 'Central de Conflitos', icon: AlertTriangle, color: 'text-red-500', badge: conflictGroups.length },
     { id: 'guardrails', label: 'Guardrails', icon: ShieldCheck, color: 'text-blue-600' },
     { id: 'contexts', label: 'Mapas de Contexto', icon: Target, color: 'text-blue-500' },
@@ -1036,6 +1038,11 @@ export default function MindflowAdminSection({ ctx }: { ctx: AdminCtx }) {
             {/* CONFLICTS REDIRECT */}
             {activeTab === 'conflicts' && (
               <MindflowConflictsSection />
+            )}
+
+            {/* PRODUCT MEMORIES REDIRECT */}
+            {activeTab === 'product_memories' && (
+              <MindflowProductMemoriesSection />
             )}
 
             {/* USER MEMORIES REDIRECT */}

@@ -150,11 +150,8 @@ export default function Dashboard() {
 
           let calculatedProgress = getDisplayProgress(productData);
 
-          try {
-            calculatedProgress = await syncProductEvolutionCache(productSnap.id);
-          } catch (progressError) {
-            console.warn("[Dashboard] Could not sync progress", productSnap.id, progressError);
-          }
+          // Removed automatic syncProductEvolutionCache call here to save write quota.
+          // It should be synced when the user actually interacts with the product workspace.
 
           return {
             ...productData,
@@ -216,11 +213,7 @@ export default function Dashboard() {
 
             let calculatedProgress = getDisplayProgress(product);
 
-            try {
-              calculatedProgress = await syncProductEvolutionCache(product.id);
-            } catch (progressError) {
-              console.warn("[Dashboard] Could not sync fallback product progress", product.id, progressError);
-            }
+            // Removed automatic syncProductEvolutionCache call in fallback to save write quota.
 
             return {
               ...product,
